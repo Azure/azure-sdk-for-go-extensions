@@ -25,10 +25,7 @@ func IsNotFoundErr(err *azcore.ResponseError) bool {
 	if err == nil {
 		return false
 	}
-	if err.ErrorCode == ResourceNotFound {
-		return true
-	}
-	return false
+	return err.ErrorCode == ResourceNotFound
 }
 
 // SubscriptionQuotaHasBeenReached tells us if we have exceeded our Quota
@@ -37,10 +34,7 @@ func SubscriptionQuotaHasBeenReached(err *azcore.ResponseError) bool {
 		return false
 	}
 
-	if strings.Contains(err.Error(), SubscriptionQuotaExceededTerm) {
-		return true
-	}
-	return false
+	return strings.Contains(err.Error(), SubscriptionQuotaExceededTerm)
 }
 
 // RegionalQuotaHasBeenReached communicates if we have reached the quota for a given region
@@ -49,8 +43,5 @@ func RegionalQuotaHasBeenReached(err *azcore.ResponseError) bool {
 		return false
 	}
 
-	if strings.Contains(err.Error(), RegionalQuotaExceededTerm) {
-		return true
-	}
-	return false
+	return strings.Contains(err.Error(), RegionalQuotaExceededTerm)
 }
