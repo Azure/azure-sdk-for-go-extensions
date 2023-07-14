@@ -1,14 +1,18 @@
 package middleware
 
 import (
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 )
 
 // ArmError is unified Error Experience across AzureResourceManager, it contains Code Message.
@@ -22,7 +26,7 @@ type RequestInfo struct {
 	ArmResId *arm.ResourceID
 }
 
-func newRequestInfo(req *http.Request, resId *arm.ResourceID) *RequestInfo {
+func newRequestInfo(req *http.Request, resId *arm.ResourceID, connTracking *HttpConnTracking) *RequestInfo {
 	return &RequestInfo{Request: req, ArmResId: resId}
 }
 
@@ -34,6 +38,15 @@ type ResponseInfo struct {
 	CorrelationId string
 }
 
+type HttpConnTracking struct {
+	TotalLatency string
+	DnsLatency   string
+	ConnLatency  string
+	TlsLatency   string
+	Protocol     string
+	ReqConnInfo  *httptrace.GotConnInfo
+}
+
 func newResponseInfo(resp *http.Response, err *ArmError, latency time.Duration) *ResponseInfo {
 	return &ResponseInfo{Response: resp, Error: err, Latency: latency}
 }
@@ -42,16 +55,13 @@ func newResponseInfo(resp *http.Response, err *ArmError, latency time.Duration) 
 // TODO: use *policy.Request or *http.Request?
 type ArmRequestMetricCollector interface {
 	// RequestStarted is called when a request is about to be sent.
-	// context is not provided, get it from Request.Context()
+	// context is not provided, get it from RequestInfo.Request.Context()
 	RequestStarted(*RequestInfo)
 
-	// RequestCompleted is called when a request is finished (statusCode < 400)
-	// context is not provided, get it from Request.Context()
+	// RequestCompleted is called when a request is finished
+	// context is not provided, get it from RequestInfo.Request.Context()
+	// if an error occurred, ResponseInfo.Error will be populated
 	RequestCompleted(*RequestInfo, *ResponseInfo)
-
-	// RequestFailed is called when a request is failed (statusCode > 399)
-	// context is not provided, get it from Request.Context()
-	RequestFailed(*RequestInfo, *ResponseInfo)
 }
 
 // ArmRequestMetricPolicy is a policy that collects metrics/telemetry for ARM requests.
@@ -72,10 +82,16 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 		// TODO: error handling without break the request.
 	}
 
+	connTracking := &HttpConnTracking{}
+	reqRaw = addConnectionTracingToRequest(reqRaw, connTracking)
+	requestInfo := newRequestInfo(reqRaw, armResId, connTracking)
 	started := time.Now()
-	p.requestStarted(newRequestInfo(reqRaw, armResId))
+
+	p.requestStarted(requestInfo)
 	resp, err := req.Next()
+
 	latency := time.Since(started)
+	var armErr *ArmError
 	if err != nil {
 		// either it's a transport error
 		// or it is already handled by previous policy
@@ -83,13 +99,11 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 		// - Context Cancelled (request configured context to have timeout)
 		// - ClientTimeout (context still valid, http client have timeout configured)
 		// - Transport Error (DNS/Dail/TLS/ServerTimeout)
-		p.requestFailed(newRequestInfo(reqRaw, armResId), newResponseInfo(resp, &ArmError{Code: "TransportError", Message: err.Error()}, latency))
-		return resp, err
+		armErr = &ArmError{Code: "TransportError", Message: err.Error()}
 	}
 
 	if resp == nil {
-		p.requestFailed(newRequestInfo(reqRaw, armResId), newResponseInfo(resp, &ArmError{Code: "UnexpectedTransportorBehavior", Message: "transport return nil, nil"}, latency))
-		return resp, nil
+		armErr = &ArmError{Code: "UnexpectedTransporterBehavior", Message: "transport return nil, nil"}
 	}
 
 	if resp != nil && resp.StatusCode > 399 {
@@ -97,16 +111,13 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 		err := runtime.NewResponseError(resp)
 		respErr := &azcore.ResponseError{}
 		if errors.As(err, &respErr) {
-			p.requestFailed(newRequestInfo(reqRaw, armResId), newResponseInfo(resp, &ArmError{Code: respErr.ErrorCode, Message: ""}, latency))
+			armErr = &ArmError{Code: respErr.ErrorCode, Message: respErr.Error()}
 		} else {
-			p.requestFailed(newRequestInfo(reqRaw, armResId), newResponseInfo(resp, &ArmError{Code: "NotAnArmError", Message: "Response body is not in ARM error form: {error:{code, message}}"}, latency))
+			armErr = &ArmError{Code: "NotAnArmError", Message: "Response body is not in ARM error form: {error:{code, message}}"}
 		}
-
-		// just an observer, caller/client have responder to handle application error.
-		return resp, nil
 	}
 
-	p.requestCompleted(newRequestInfo(reqRaw, armResId), newResponseInfo(resp, nil, latency))
+	p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency))
 	return resp, nil
 }
 
@@ -124,9 +135,57 @@ func (p *ArmRequestMetricPolicy) requestCompleted(iReq *RequestInfo, iResp *Resp
 	}
 }
 
-// shortcut function to handle nil collector
-func (p *ArmRequestMetricPolicy) requestFailed(iReq *RequestInfo, iResp *ResponseInfo) {
-	if p.Collector != nil {
-		p.Collector.RequestFailed(iReq, iResp)
+func addConnectionTracingToRequest(httpReq *http.Request, connTracking *HttpConnTracking) *http.Request {
+	var getConn, dnsStart, connStart, tlsStart *time.Time
+
+	trace := &httptrace.ClientTrace{
+		GetConn: func(hostPort string) {
+			getConn = to.Ptr(time.Now())
+		},
+		GotConn: func(connInfo httptrace.GotConnInfo) {
+			if getConn != nil {
+				connTracking.TotalLatency = fmt.Sprintf("%dms", time.Now().Sub(*getConn).Milliseconds())
+			}
+
+			connTracking.ReqConnInfo = &connInfo
+		},
+		DNSStart: func(_ httptrace.DNSStartInfo) {
+			dnsStart = to.Ptr(time.Now())
+		},
+		DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+			if dnsInfo.Err == nil {
+				if dnsStart != nil {
+					connTracking.DnsLatency = fmt.Sprintf("%dms", time.Now().Sub(*dnsStart).Milliseconds())
+				}
+			} else {
+				connTracking.DnsLatency = dnsInfo.Err.Error()
+			}
+		},
+		ConnectStart: func(_, _ string) {
+			connStart = to.Ptr(time.Now())
+		},
+		ConnectDone: func(_, _ string, err error) {
+			if err == nil {
+				if connStart != nil {
+					connTracking.ConnLatency = fmt.Sprintf("%dms", time.Now().Sub(*connStart).Milliseconds())
+				}
+			} else {
+				connTracking.ConnLatency = err.Error()
+			}
+		},
+		TLSHandshakeStart: func() {
+			tlsStart = to.Ptr(time.Now())
+		},
+		TLSHandshakeDone: func(t tls.ConnectionState, err error) {
+			if err == nil {
+				if tlsStart != nil {
+					connTracking.TlsLatency = fmt.Sprintf("%dms", time.Now().Sub(*tlsStart).Milliseconds())
+				}
+				connTracking.Protocol = t.NegotiatedProtocol
+			} else {
+				connTracking.TlsLatency = err.Error()
+			}
+		},
 	}
+	return httpReq.WithContext(httptrace.WithClientTrace(httpReq.Context(), trace))
 }

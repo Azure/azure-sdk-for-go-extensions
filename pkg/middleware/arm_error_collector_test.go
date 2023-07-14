@@ -65,10 +65,6 @@ func (c *myCollector) RequestCompleted(iReq *RequestInfo, iResp *ResponseInfo) {
 	c.logger.Logf("RequestFinished with %d, on %s, URL=%s\n", iResp.Response.StatusCode, c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
 }
 
-func (c *myCollector) RequestFailed(iReq *RequestInfo, iResp *ResponseInfo) {
-	c.logger.Logf("RequestFailed with %d %s, on %s, URL=%s\n", iResp.Response.StatusCode, iResp.Error.Code, c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
-}
-
 func (c *myCollector) formatResourceId(resId *arm.ResourceID) string {
 	return fmt.Sprintf("ResourceType=%s, subscription=%s, resourceGroup=%s", resId.ResourceType.String(), resId.SubscriptionID, resId.ResourceGroupName)
 }
