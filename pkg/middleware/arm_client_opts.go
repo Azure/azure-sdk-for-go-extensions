@@ -27,7 +27,7 @@ func DefaultArmOpts(userAgent string, logCollector ArmRequestMetricCollector, cu
 	opts.Retry = DefaultRetryOpts()
 	opts.Transport = DefaultHTTPClient()
 	// we add the logging policy to the PerRetryPolicies so we can track
-	// any retries that happene
+	// any retries that happened
 	opts.PerRetryPolicies = []policy.Policy{&ArmRequestMetricPolicy{Collector: logCollector}}
 	opts.PerCallPolicies = customPerCallPolicies
 	return opts
