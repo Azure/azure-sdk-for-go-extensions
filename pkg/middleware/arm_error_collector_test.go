@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -23,7 +24,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	token, err := azidentity.NewClientSecretCredential(testInfo.TenantID, testInfo.SPNClientID, testInfo.SPNClientSecret, nil)
 	assert.NoError(t, err)
 
-	clientOptions := DefaultArmOpts("test", &myCollector{logger: t})
+	clientOptions := DefaultArmOpts("test", &myCollector{logger: t, t: t})
 	clientOptions.DisableRPRegistration = true
 	client, err := armcontainerservice.NewManagedClustersClient("notexistingSub", token, clientOptions)
 	assert.NoError(t, err)
@@ -46,15 +47,33 @@ type logger interface {
 }
 
 type myCollector struct {
+	t      *testing.T
 	logger logger
 }
 
 func (c *myCollector) RequestStarted(iReq *RequestInfo) {
 	c.logger.Logf("RequestStarted, on %s, URL=%s\n", c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
+	// make some assertions about the request info
+	assert.Equal(c.t, iReq.ArmResId.SubscriptionID, "notexistingSub")
+	assert.Equal(c.t, iReq.ArmResId.ResourceGroupName, "test")
+	assert.Equal(c.t, iReq.ArmResId.Name, "test")
 }
 
 func (c *myCollector) RequestCompleted(iReq *RequestInfo, iResp *ResponseInfo) {
 	c.logger.Logf("RequestFinished with %d, on %s, URL=%s\n", iResp.Response.StatusCode, c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
+	connTracking := iResp.ConnTracking
+	//assert that the http connection tracking was filled out
+
+	assert.NotNil(c.t, connTracking.ReqConnInfo)
+
+	_, err := time.ParseDuration(connTracking.TotalLatency)
+	assert.Nil(c.t, err)
+	_, err = time.ParseDuration(connTracking.TlsLatency)
+	assert.Nil(c.t, err)
+	_, err = time.ParseDuration(connTracking.ConnLatency)
+	assert.Nil(c.t, err)
+	_, err = time.ParseDuration(connTracking.DnsLatency)
+	assert.Nil(c.t, err)
 }
 
 func (c *myCollector) formatResourceId(resId *arm.ResourceID) string {

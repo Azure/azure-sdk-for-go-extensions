@@ -27,7 +27,7 @@ type RequestInfo struct {
 	ArmResId *arm.ResourceID
 }
 
-func newRequestInfo(req *http.Request, resId *arm.ResourceID, connTracking *HttpConnTracking) *RequestInfo {
+func newRequestInfo(req *http.Request, resId *arm.ResourceID) *RequestInfo {
 	return &RequestInfo{Request: req, ArmResId: resId}
 }
 
@@ -37,6 +37,7 @@ type ResponseInfo struct {
 	Latency       time.Duration
 	RequestId     string
 	CorrelationId string
+	ConnTracking  *HttpConnTracking
 }
 
 type HttpConnTracking struct {
@@ -48,8 +49,8 @@ type HttpConnTracking struct {
 	ReqConnInfo  *httptrace.GotConnInfo
 }
 
-func newResponseInfo(resp *http.Response, err *ArmError, latency time.Duration) *ResponseInfo {
-	return &ResponseInfo{Response: resp, Error: err, Latency: latency}
+func newResponseInfo(resp *http.Response, err *ArmError, latency time.Duration, connTracking *HttpConnTracking) *ResponseInfo {
+	return &ResponseInfo{Response: resp, Error: err, Latency: latency, ConnTracking: connTracking}
 }
 
 // ArmRequestMetricCollector is a interface that collectors need to implement.
@@ -90,7 +91,7 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 	// newARMReq
 	newCtx := addConnectionTracingToRequestContext(httpReq.Context(), connTracking)
 	newARMReq := req.Clone(newCtx)
-	requestInfo := newRequestInfo(httpReq, armResId, connTracking)
+	requestInfo := newRequestInfo(httpReq, armResId)
 	started := time.Now()
 
 	p.requestStarted(requestInfo)
@@ -127,7 +128,7 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 			}
 		}
 
-		p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency))
+		p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency, connTracking))
 	}()
 	resp, err = newARMReq.Next()
 
