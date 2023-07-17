@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -71,53 +72,65 @@ type ArmRequestMetricPolicy struct {
 
 // Do implements the azcore/policy.Policy interface.
 func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error) {
-	reqRaw := req.Raw()
-	if reqRaw == nil || reqRaw.URL == nil {
+	httpReq := req.Raw()
+	if httpReq == nil || httpReq.URL == nil {
 		// not able to collect telemetry, just pass through
 		return req.Next()
 	}
 
-	armResId, err := arm.ParseResourceID(reqRaw.URL.Path)
+	armResId, err := arm.ParseResourceID(httpReq.URL.Path)
 	if err != nil {
 		// TODO: error handling without break the request.
 	}
 
 	connTracking := &HttpConnTracking{}
-	reqRaw = addConnectionTracingToRequest(reqRaw, connTracking)
-	requestInfo := newRequestInfo(reqRaw, armResId, connTracking)
+	// have to add to the context at first - then clone the policy.Request struct
+	// this allows the connection tracing to happen
+	// otherwise we can't change the underlying http request of req, we have to use
+	// newARMReq
+	newCtx := addConnectionTracingToRequestContext(httpReq.Context(), connTracking)
+	newARMReq := req.Clone(newCtx)
+	requestInfo := newRequestInfo(httpReq, armResId, connTracking)
 	started := time.Now()
 
 	p.requestStarted(requestInfo)
-	resp, err := req.Next()
+	var resp *http.Response
+	var reqErr error
 
-	latency := time.Since(started)
-	var armErr *ArmError
-	if err != nil {
-		// either it's a transport error
-		// or it is already handled by previous policy
-		// TODO: distinguash
-		// - Context Cancelled (request configured context to have timeout)
-		// - ClientTimeout (context still valid, http client have timeout configured)
-		// - Transport Error (DNS/Dail/TLS/ServerTimeout)
-		armErr = &ArmError{Code: "TransportError", Message: err.Error()}
-	}
-
-	if resp == nil {
-		armErr = &ArmError{Code: "UnexpectedTransporterBehavior", Message: "transport return nil, nil"}
-	}
-
-	if resp != nil && resp.StatusCode > 399 {
-		// for 4xx, 5xx response, ARM should include {error:{code, message}} in the body
-		err := runtime.NewResponseError(resp)
-		respErr := &azcore.ResponseError{}
-		if errors.As(err, &respErr) {
-			armErr = &ArmError{Code: respErr.ErrorCode, Message: respErr.Error()}
-		} else {
-			armErr = &ArmError{Code: "NotAnArmError", Message: "Response body is not in ARM error form: {error:{code, message}}"}
+	// defer this function in case there's a panic somewhere down the pipeline.
+	// It's the calling user's responsibility to handle panics, not this policy
+	defer func() {
+		latency := time.Since(started)
+		var armErr *ArmError
+		if reqErr != nil {
+			// either it's a transport error
+			// or it is already handled by previous policy
+			// TODO: distinguash
+			// - Context Cancelled (request configured context to have timeout)
+			// - ClientTimeout (context still valid, http client have timeout configured)
+			// - Transport Error (DNS/Dail/TLS/ServerTimeout)
+			armErr = &ArmError{Code: "TransportError", Message: reqErr.Error()}
 		}
-	}
 
-	p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency))
+		if resp == nil {
+			armErr = &ArmError{Code: "UnexpectedTransporterBehavior", Message: "transport return nil, nil"}
+		}
+
+		if resp != nil && resp.StatusCode > 399 {
+			// for 4xx, 5xx response, ARM should include {error:{code, message}} in the body
+			err := runtime.NewResponseError(resp)
+			respErr := &azcore.ResponseError{}
+			if errors.As(err, &respErr) {
+				armErr = &ArmError{Code: respErr.ErrorCode, Message: respErr.Error()}
+			} else {
+				armErr = &ArmError{Code: "NotAnArmError", Message: "Response body is not in ARM error form: {error:{code, message}}"}
+			}
+		}
+
+		p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency))
+	}()
+	resp, err = newARMReq.Next()
+
 	return resp, nil
 }
 
@@ -135,7 +148,7 @@ func (p *ArmRequestMetricPolicy) requestCompleted(iReq *RequestInfo, iResp *Resp
 	}
 }
 
-func addConnectionTracingToRequest(httpReq *http.Request, connTracking *HttpConnTracking) *http.Request {
+func addConnectionTracingToRequestContext(ctx context.Context, connTracking *HttpConnTracking) context.Context {
 	var getConn, dnsStart, connStart, tlsStart *time.Time
 
 	trace := &httptrace.ClientTrace{
@@ -187,5 +200,6 @@ func addConnectionTracingToRequest(httpReq *http.Request, connTracking *HttpConn
 			}
 		},
 	}
-	return httpReq.WithContext(httptrace.WithClientTrace(httpReq.Context(), trace))
+	ctx = httptrace.WithClientTrace(ctx, trace)
+	return ctx
 }

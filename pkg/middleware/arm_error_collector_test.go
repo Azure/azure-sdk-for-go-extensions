@@ -9,7 +9,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
@@ -24,15 +23,8 @@ func TestArmRequestMetrics(t *testing.T) {
 	token, err := azidentity.NewClientSecretCredential(testInfo.TenantID, testInfo.SPNClientID, testInfo.SPNClientSecret, nil)
 	assert.NoError(t, err)
 
-	myPolicy := &ArmRequestMetricPolicy{
-		Collector: &myCollector{logger: t},
-	}
-	clientOptions := &arm.ClientOptions{
-		ClientOptions: policy.ClientOptions{
-			PerCallPolicies: []policy.Policy{myPolicy},
-		},
-		DisableRPRegistration: true,
-	}
+	clientOptions := DefaultArmOpts("test", &myCollector{logger: t})
+	clientOptions.DisableRPRegistration = true
 	client, err := armcontainerservice.NewManagedClustersClient("notexistingSub", token, clientOptions)
 	assert.NoError(t, err)
 

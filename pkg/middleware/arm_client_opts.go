@@ -21,12 +21,15 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
 
-func DefaultArmOpts(userAgent string, logCollector ArmRequestMetricCollector, customPerCallPolicies ) *arm.ClientOptions {
+func DefaultArmOpts(userAgent string, logCollector ArmRequestMetricCollector, customPerCallPolicies ...policy.Policy) *arm.ClientOptions {
 	opts := &arm.ClientOptions{}
 	opts.Telemetry = DefaultTelemetryOpts(userAgent)
 	opts.Retry = DefaultRetryOpts()
 	opts.Transport = DefaultHTTPClient()
-	opts.PerCallPolicies
+	// we add the logging policy to the PerRetryPolicies so we can track
+	// any retries that happen
+	opts.PerRetryPolicies = []policy.Policy{&ArmRequestMetricPolicy{Collector: logCollector}}
+	opts.PerCallPolicies = customPerCallPolicies
 	return opts
 }
 
