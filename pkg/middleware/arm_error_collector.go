@@ -130,7 +130,7 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 
 		p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency, connTracking))
 	}()
-	resp, err = newARMReq.Next()
+	resp, reqErr = newARMReq.Next()
 
 	return resp, nil
 }
