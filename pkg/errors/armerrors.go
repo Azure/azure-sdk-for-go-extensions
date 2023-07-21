@@ -15,33 +15,36 @@ limitations under the License.
 package errors
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
 
-// IsNotFoundErr is used to determine if we are failing to find a resource within azure
-func IsNotFoundErr(err *azcore.ResponseError) bool {
-	if err == nil {
-		return false
+// IsResponseError checks if the error is of type *azcore.ResponseError
+// and returns the response error or nil if it's not.
+func IsResponseError(err error) *azcore.ResponseError {
+	var azErr *azcore.ResponseError
+	if errors.As(err, &azErr) && err != nil {
+		return azErr
 	}
-	return err.ErrorCode == ResourceNotFound
+	return nil
 }
 
-// SubscriptionQuotaHasBeenReached tells us if we have exceeded our Quota
-func SubscriptionQuotaHasBeenReached(err *azcore.ResponseError) bool {
-	if err == nil || err.ErrorCode != OperationNotAllowed {
-		return false
-	}
-
-	return strings.Contains(err.Error(), SubscriptionQuotaExceededTerm)
+// IsNotFoundErr is used to determine if we are failing to find a resource within azure.
+func IsNotFoundErr(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == ResourceNotFound
 }
 
-// RegionalQuotaHasBeenReached communicates if we have reached the quota for a given region
-func RegionalQuotaHasBeenReached(err *azcore.ResponseError) bool {
-	if err == nil || err.ErrorCode != OperationNotAllowed {
-		return false
-	}
+// SubscriptionQuotaHasBeenReached tells us if we have exceeded our Quota.
+func SubscriptionQuotaHasBeenReached(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), SubscriptionQuotaExceededTerm)
+}
 
-	return strings.Contains(err.Error(), RegionalQuotaExceededTerm)
+// RegionalQuotaHasBeenReached communicates if we have reached the quota for a given region.
+func RegionalQuotaHasBeenReached(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
