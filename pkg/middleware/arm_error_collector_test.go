@@ -4,36 +4,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestArmRequestMetrics(t *testing.T) {
-	testInfo, err := testInfoFromEnv()
-	if err != nil {
-		t.Skipf("test requires setup: %s", err)
-	}
-	token, err := azidentity.NewClientSecretCredential(testInfo.TenantID, testInfo.SPNClientID, testInfo.SPNClientSecret, nil)
-	assert.NoError(t, err)
-
 	myPolicy := &ArmRequestMetricPolicy{
 		Collector: &myCollector{logger: t},
 	}
 	clientOptions := &arm.ClientOptions{
 		ClientOptions: policy.ClientOptions{
 			PerCallPolicies: []policy.Policy{myPolicy},
+			Transport:       &mockServerTransport{},
 		},
 		DisableRPRegistration: true,
 	}
-	client, err := armcontainerservice.NewManagedClustersClient("notexistingSub", token, clientOptions)
+	client, err := armcontainerservice.NewManagedClustersClient("notexistingSub", &mockTokenCredential{}, clientOptions)
 	assert.NoError(t, err)
 
 	_, err = client.BeginCreateOrUpdate(context.Background(), "test", "test", armcontainerservice.ManagedCluster{Location: to.Ptr("eastus")}, nil)
@@ -44,7 +39,6 @@ func TestArmRequestMetrics(t *testing.T) {
 
 	respErr := &azcore.ResponseError{}
 	assert.True(t, errors.As(err, &respErr))
-	assert.Equal(t, respErr.ErrorCode, "InvalidSubscriptionId")
 }
 
 var _ ArmRequestMetricCollector = &myCollector{}
@@ -71,6 +65,25 @@ func (c *myCollector) RequestFailed(iReq *RequestInfo, iResp *ResponseInfo) {
 
 func (c *myCollector) formatResourceId(resId *arm.ResourceID) string {
 	return fmt.Sprintf("ResourceType=%s, subscription=%s, resourceGroup=%s", resId.ResourceType.String(), resId.SubscriptionID, resId.ResourceGroupName)
+}
+
+type mockServerTransport struct{}
+
+func (m *mockServerTransport) Do(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: 400,
+		Body:       http.NoBody,
+	}, nil
+}
+
+type mockTokenCredential struct{}
+
+// GetToken implements azcore.TokenCredential
+func (m *mockTokenCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	return azcore.AccessToken{
+		Token:     "fakeToken",
+		ExpiresOn: time.Now().Add(1 * time.Hour),
+	}, nil
 }
 
 type aadInfo struct {
