@@ -2,78 +2,310 @@ package middleware
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
-	"os"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestArmRequestMetrics(t *testing.T) {
-	myPolicy := &ArmRequestMetricPolicy{
-		Collector: &myCollector{logger: t},
-	}
-	clientOptions := &arm.ClientOptions{
-		ClientOptions: policy.ClientOptions{
-			PerCallPolicies: []policy.Policy{myPolicy},
-			Transport:       &mockServerTransport{},
-		},
-		DisableRPRegistration: true,
-	}
-	client, err := armcontainerservice.NewManagedClustersClient("notexistingSub", &mockTokenCredential{}, clientOptions)
-	assert.NoError(t, err)
+	subID := "notexistingSub"
+	rgName := "testRG"
+	resourceName := "test"
+	testCorrelationId := "testCorrelationId"
 
-	_, err = client.BeginCreateOrUpdate(context.Background(), "test", "test", armcontainerservice.ManagedCluster{Location: to.Ptr("eastus")}, nil)
+	checkRequestInfo := func(iReq *RequestInfo) {
+		assert.NotNil(t, iReq)
+		assert.Equal(t, iReq.ArmResId.SubscriptionID, subID)
+		assert.Equal(t, iReq.ArmResId.ResourceGroupName, rgName)
+		assert.Equal(t, iReq.ArmResId.Name, resourceName)
+		assert.NotNil(t, iReq.Request)
+	}
+
+	checkResponseInfo := func(iResp *ResponseInfo, expectError bool) {
+		if expectError {
+			assert.NotNil(t, iResp.Error)
+		} else {
+			assert.Nil(t, iResp.Error)
+		}
+		assert.NotNil(t, iResp)
+		assert.NotNil(t, iResp.Response)
+		assert.NotEmpty(t, iResp.RequestId)
+		assert.NotEmpty(t, iResp.CorrelationId)
+		assert.True(t, iResp.Latency > 0)
+		connTracking := iResp.ConnTracking
+		assert.NotNil(t, connTracking.ReqConnInfo)
+		_, err := time.ParseDuration(connTracking.TotalLatency)
+		assert.Nil(t, err)
+		_, err = time.ParseDuration(connTracking.TlsLatency)
+		assert.Nil(t, err)
+		_, err = time.ParseDuration(connTracking.ConnLatency)
+		assert.Nil(t, err)
+		// we don't have a DNS lookup for httptest server so this should be empty
+		assert.Equal(t, connTracking.DnsLatency, "")
+	}
+
+	t.Run("should call RequestStarted and RequestFinished for succeeded requests", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer ts.Close()
+
+		requestedStartedCalled := false
+		requestCompletetedCalled := false
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				requestedStartedCalled = true
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				requestCompletetedCalled = true
+				checkResponseInfo(iResp, false)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// clientOptions.DisableRPRegistration = true
+
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		assert.NoError(t, err)
+		reqHeader := http.Header{}
+		reqHeader.Set("X-Ms-Correlation-Request-Id", testCorrelationId)
+		ctx := runtime.WithHTTPHeader(context.Background(), reqHeader)
+		_, err = client.Get(ctx, rgName, resourceName, nil)
+		assert.NoError(t, err)
+
+		assert.True(t, requestedStartedCalled)
+		assert.True(t, requestCompletetedCalled)
+	})
+
+	t.Run("should get ArmError for failed requests", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":{"code":"TestInternalError","message":"The is test internal error."}}`))
+		}))
+		defer ts.Close()
+
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				checkResponseInfo(iResp, true)
+				respErr := iResp.Error
+				assert.NotNil(t, respErr)
+				assert.Equal(t, respErr.Code, "TestInternalError")
+				assert.NotEmpty(t, respErr.Message)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// no retry
+		clientOptions.Retry.MaxRetries = -1
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		reqHeader := http.Header{}
+		reqHeader.Set("X-Ms-Correlation-Request-Id", testCorrelationId)
+		ctx := runtime.WithHTTPHeader(context.Background(), reqHeader)
+		assert.NoError(t, err)
+		_, err = client.Get(ctx, rgName, resourceName, nil)
+		assert.Error(t, err)
+	})
+
+	t.Run("should get correct ArmError when context timeout", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(1 * time.Second)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer ts.Close()
+
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				assert.NotNil(t, iResp)
+				assert.Nil(t, iResp.Response)
+				assert.True(t, iResp.Latency > 0)
+				respErr := iResp.Error
+				assert.NotNil(t, respErr)
+				assert.Equal(t, "ContextTimeout", respErr.Code)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// no retry
+		clientOptions.Retry.MaxRetries = -1
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		assert.NoError(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		_, err = client.Get(ctx, rgName, resourceName, nil)
+		assert.Error(t, err)
+		assert.EqualError(t, err, "context deadline exceeded")
+	})
+
+	t.Run("should get correct ArmError when context canceled", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(1 * time.Second)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer ts.Close()
+
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				assert.NotNil(t, iResp)
+				assert.Nil(t, iResp.Response)
+				assert.True(t, iResp.Latency > 0)
+				respErr := iResp.Error
+				assert.NotNil(t, respErr)
+				assert.Equal(t, "ContextCanceled", respErr.Code)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// no retry
+		clientOptions.Retry.MaxRetries = -1
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		assert.NoError(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		cancel()
+		_, err = client.Get(ctx, rgName, resourceName, nil)
+		assert.EqualError(t, err, "context canceled")
+	})
+
+	t.Run("should get correct ArmError for transport error", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		// close it to simulate transport error
+		ts.Close()
+
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				assert.NotNil(t, iResp)
+				assert.Nil(t, iResp.Response)
+				assert.True(t, iResp.Latency > 0)
+				respErr := iResp.Error
+				assert.NotNil(t, respErr)
+				assert.Equal(t, "TransportError", respErr.Code)
+				assert.NotEmpty(t, respErr.Message)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// no retry
+		clientOptions.Retry.MaxRetries = -1
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		assert.NoError(t, err)
+		_, err = client.Get(context.Background(), rgName, resourceName, nil)
+		assert.Error(t, err)
+	})
+
+	t.Run("should get correct ArmError for server timeout", func(t *testing.T) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(1 * time.Second)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer ts.Close()
+
+		collector := &testCollector{
+			requestStarted: func(iReq *RequestInfo) {
+				checkRequestInfo(iReq)
+			},
+			requestCompleted: func(iReq *RequestInfo, iResp *ResponseInfo) {
+				assert.NotNil(t, iResp)
+				assert.Nil(t, iResp.Response)
+				assert.True(t, iResp.Latency > 0)
+				respErr := iResp.Error
+				assert.NotNil(t, respErr)
+				assert.Equal(t, "ContextTimeout", respErr.Code)
+				assert.NotEmpty(t, respErr.Message)
+			},
+		}
+
+		clientOptions := DefaultArmOpts("testUserAgent", collector)
+		// no retry
+		clientOptions.Retry.MaxRetries = -1
+		clientOptions.Retry.TryTimeout = 10 * time.Millisecond
+		clientOptions.Transport = newMockServerTransportWithTestServer(ts)
+		client, err := armcontainerservice.NewManagedClustersClient(subID, &mockTokenCredential{}, clientOptions)
+		assert.NoError(t, err)
+		_, err = client.Get(context.Background(), rgName, resourceName, nil)
+		assert.Error(t, err)
+	})
+
+	// _, err = client.Get(context.Background(), "test", "test", nil)
 	// here the error is parsed from response body twice
 	// 1. by ArmRequestMetricPolicy, parse and log, and throw away.
 	// 2. by generated client function: runtime.HasStatusCode, and return to here.
-	assert.Error(t, err)
+	//assert.Error(t, err)
 
-	respErr := &azcore.ResponseError{}
-	assert.True(t, errors.As(err, &respErr))
+	//respErr := &azcore.ResponseError{}
+	//assert.True(t, errors.As(err, &respErr))
 }
 
-var _ ArmRequestMetricCollector = &myCollector{}
+var _ ArmRequestMetricCollector = &testCollector{}
 
-type logger interface {
-	Logf(format string, args ...interface{})
+type testCollector struct {
+	requestStarted   func(iReq *RequestInfo)
+	requestCompleted func(iReq *RequestInfo, iResp *ResponseInfo)
 }
 
-type myCollector struct {
-	logger logger
+func (c *testCollector) RequestStarted(iReq *RequestInfo) {
+	c.requestStarted(iReq)
 }
 
-func (c *myCollector) RequestStarted(iReq *RequestInfo) {
-	c.logger.Logf("RequestStarted, on %s, URL=%s\n", c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
+func (c *testCollector) RequestCompleted(iReq *RequestInfo, iResp *ResponseInfo) {
+	c.requestCompleted(iReq, iResp)
 }
 
-func (c *myCollector) RequestCompleted(iReq *RequestInfo, iResp *ResponseInfo) {
-	c.logger.Logf("RequestFinished with %d, on %s, URL=%s\n", iResp.Response.StatusCode, c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
+type mockServerTransport struct {
+	do func(*http.Request) (*http.Response, error)
 }
 
-func (c *myCollector) RequestFailed(iReq *RequestInfo, iResp *ResponseInfo) {
-	c.logger.Logf("RequestFailed with %d %s, on %s, URL=%s\n", iResp.Response.StatusCode, iResp.Error.Code, c.formatResourceId(iReq.ArmResId), iReq.Request.URL)
+func newMockServerTransportWithTestServer(ts *httptest.Server) *mockServerTransport {
+	return &mockServerTransport{
+		do: func(req *http.Request) (*http.Response, error) {
+			newReq := req.Clone(req.Context())
+			tsURL, err := url.Parse(ts.URL)
+			if err != nil {
+				panic(err)
+			}
+			newReq.URL = tsURL
+			newReq = newReq.WithContext(req.Context())
+			if err != nil {
+				return nil, err
+			}
+			resp, err := ts.Client().Do(newReq)
+			if err != nil {
+				return nil, err
+			}
+			resp.Request = req
+			return resp, nil
+		},
+	}
 }
-
-func (c *myCollector) formatResourceId(resId *arm.ResourceID) string {
-	return fmt.Sprintf("ResourceType=%s, subscription=%s, resourceGroup=%s", resId.ResourceType.String(), resId.SubscriptionID, resId.ResourceGroupName)
-}
-
-type mockServerTransport struct{}
 
 func (m *mockServerTransport) Do(req *http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: 400,
-		Body:       http.NoBody,
-	}, nil
+	return m.do(req)
 }
 
 type mockTokenCredential struct{}
@@ -83,41 +315,5 @@ func (m *mockTokenCredential) GetToken(ctx context.Context, opts policy.TokenReq
 	return azcore.AccessToken{
 		Token:     "fakeToken",
 		ExpiresOn: time.Now().Add(1 * time.Hour),
-	}, nil
-}
-
-type aadInfo struct {
-	TenantID        string
-	SPNClientID     string
-	SPNClientSecret string
-	SubscriptionID  string
-}
-
-func testInfoFromEnv() (*aadInfo, error) {
-	tenantID, ok := os.LookupEnv("AAD_Tenant")
-	if !ok {
-		return nil, errors.New("AAD_Tenant is not set")
-	}
-
-	clientID, ok := os.LookupEnv("AAD_ClientID")
-	if !ok {
-		return nil, errors.New("AAD_ClientID is not set")
-	}
-
-	clientSecret, ok := os.LookupEnv("AAD_ClientSecret")
-	if !ok {
-		return nil, errors.New("AAD_ClientSecret is not set")
-	}
-
-	subscriptionID, ok := os.LookupEnv("Azure_Subscription")
-	if !ok {
-		return nil, errors.New("Azure_Subscription is not set")
-	}
-
-	return &aadInfo{
-		TenantID:        tenantID,
-		SPNClientID:     clientID,
-		SPNClientSecret: clientSecret,
-		SubscriptionID:  subscriptionID,
 	}, nil
 }
