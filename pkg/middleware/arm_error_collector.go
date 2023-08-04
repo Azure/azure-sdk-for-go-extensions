@@ -160,7 +160,7 @@ func parseArmErrorFromResponse(resp *http.Response) *ArmError {
 // distinguash
 // - Context Cancelled (request configured context to have timeout)
 // - ClientTimeout (context still valid, http client have timeout configured)
-// - Transport Error (DNS/Dail/TLS/ServerTimeout)
+// - Transport Error (DNS/Dial/TLS/ServerTimeout)
 func parseTransportError(err error) *ArmError {
 	if err == nil {
 		return nil
