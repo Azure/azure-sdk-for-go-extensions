@@ -17,15 +17,22 @@ import (
 )
 
 const (
-	headerKeyRequestID     = "X-Ms-Client-Request-Id"
-	headerKeyCorrelationID = "X-Ms-Correlation-Request-id"
+	headerKeyRequestID                                    = "X-Ms-Client-Request-Id"
+	headerKeyCorrelationID                                = "X-Ms-Correlation-Request-id"
+	ArmErrorCodeCastToArmResponseErrorFailed ArmErrorCode = "CastToArmResponseErrorFailed"
+	ArmErrorCodeTransportError               ArmErrorCode = "TransportError"
+	ArmErrorCodeUnexpectedTransportError     ArmErrorCode = "UnexpectedTransportError"
+	ArmErrorCodeContextCanceled              ArmErrorCode = "ContextCanceled"
+	ArmErrorCodeContextDeadlineExceeded      ArmErrorCode = "ContextDeadlineExceeded"
 )
 
 // ArmError is unified Error Experience across AzureResourceManager, it contains Code Message.
 type ArmError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    ArmErrorCode `json:"code"`
+	Message string       `json:"message"`
 }
+
+type ArmErrorCode string
 
 type RequestInfo struct {
 	Request  *http.Request
@@ -148,16 +155,16 @@ func (p *ArmRequestMetricPolicy) requestCompleted(iReq *RequestInfo, iResp *Resp
 
 func parseArmErrorFromResponse(resp *http.Response) *ArmError {
 	if resp == nil {
-		return &ArmError{Code: "UnexpectedTransporterBehavior", Message: "nil response"}
+		return &ArmError{Code: ArmErrorCodeUnexpectedTransportError, Message: "nil response"}
 	}
 	if resp.StatusCode > 399 {
 		// for 4xx, 5xx response, ARM should include {error:{code, message}} in the body
 		err := runtime.NewResponseError(resp)
 		respErr := &azcore.ResponseError{}
 		if errors.As(err, &respErr) {
-			return &ArmError{Code: respErr.ErrorCode, Message: respErr.Error()}
+			return &ArmError{Code: ArmErrorCode(respErr.ErrorCode), Message: respErr.Error()}
 		}
-		return &ArmError{Code: "NotArmResponseError", Message: fmt.Sprintf("Response body is not in ARM error form: {error:{code, message}}: %s", err.Error())}
+		return &ArmError{Code: ArmErrorCodeCastToArmResponseErrorFailed, Message: fmt.Sprintf("Response body is not in ARM error form: {error:{code, message}}: %s", err.Error())}
 	}
 	return nil
 }
@@ -171,12 +178,12 @@ func parseTransportError(err error) *ArmError {
 		return nil
 	}
 	if errors.Is(err, context.Canceled) {
-		return &ArmError{Code: "ContextCanceled", Message: err.Error()}
+		return &ArmError{Code: ArmErrorCodeContextCanceled, Message: err.Error()}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &ArmError{Code: "ContextTimeout", Message: err.Error()}
+		return &ArmError{Code: ArmErrorCodeContextDeadlineExceeded, Message: err.Error()}
 	}
-	return &ArmError{Code: "TransportError", Message: err.Error()}
+	return &ArmError{Code: ArmErrorCodeTransportError, Message: err.Error()}
 }
 
 func addConnectionTracingToRequestContext(ctx context.Context, connTracking *HttpConnTracking) context.Context {

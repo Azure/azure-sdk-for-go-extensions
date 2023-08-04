@@ -104,7 +104,7 @@ func TestArmRequestMetrics(t *testing.T) {
 				checkResponseInfo(tt, iResp, true)
 				respErr := iResp.Error
 				assert.NotNil(tt, respErr)
-				assert.Equal(tt, respErr.Code, "TestInternalError")
+				assert.Equal(tt, ArmErrorCode("TestInternalError"), respErr.Code)
 				assert.NotEmpty(tt, respErr.Message)
 			},
 		}
@@ -140,7 +140,7 @@ func TestArmRequestMetrics(t *testing.T) {
 				assert.True(tt, iResp.Latency > 0)
 				respErr := iResp.Error
 				assert.NotNil(tt, respErr)
-				assert.Equal(tt, "ContextTimeout", respErr.Code)
+				assert.Equal(tt, ArmErrorCodeContextDeadlineExceeded, respErr.Code)
 			},
 		}
 
@@ -175,7 +175,7 @@ func TestArmRequestMetrics(t *testing.T) {
 				assert.True(tt, iResp.Latency > 0)
 				respErr := iResp.Error
 				assert.NotNil(tt, respErr)
-				assert.Equal(tt, "ContextCanceled", respErr.Code)
+				assert.Equal(tt, ArmErrorCodeContextCanceled, respErr.Code)
 			},
 		}
 
@@ -209,7 +209,7 @@ func TestArmRequestMetrics(t *testing.T) {
 				assert.True(tt, iResp.Latency > 0)
 				respErr := iResp.Error
 				assert.NotNil(tt, respErr)
-				assert.Equal(tt, "TransportError", respErr.Code)
+				assert.Equal(tt, ArmErrorCodeTransportError, respErr.Code)
 				assert.NotEmpty(tt, respErr.Message)
 			},
 		}
@@ -242,7 +242,7 @@ func TestArmRequestMetrics(t *testing.T) {
 				assert.True(tt, iResp.Latency > 0)
 				respErr := iResp.Error
 				assert.NotNil(tt, respErr)
-				assert.Equal(tt, "ContextTimeout", respErr.Code)
+				assert.Equal(tt, ArmErrorCodeContextDeadlineExceeded, respErr.Code)
 				assert.NotEmpty(tt, respErr.Message)
 			},
 		}
