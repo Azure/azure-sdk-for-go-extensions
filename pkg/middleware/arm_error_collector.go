@@ -16,6 +16,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 )
 
+const (
+	headerKeyRequestID     = "X-Ms-Client-Request-Id"
+	headerKeyCorrelationID = "X-Ms-Correlation-Request-id"
+)
+
 // ArmError is unified Error Experience across AzureResourceManager, it contains Code Message.
 type ArmError struct {
 	Code    string `json:"code"`
@@ -116,8 +121,8 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 		// need to get the request id and correlation id from the response.request header
 		// because the headers were added by policy and might be called after this policy
 		if resp != nil && resp.Request != nil {
-			respInfo.RequestId = resp.Request.Header.Get("X-Ms-Client-Request-Id")
-			respInfo.CorrelationId = resp.Request.Header.Get("X-Ms-Correlation-Request-id")
+			respInfo.RequestId = resp.Request.Header.Get(headerKeyRequestID)
+			respInfo.CorrelationId = resp.Request.Header.Get(headerKeyCorrelationID)
 		}
 
 		p.requestCompleted(requestInfo, respInfo)
