@@ -53,6 +53,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	}
 
 	t.Run("should call RequestStarted and RequestFinished for succeeded requests", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -88,6 +89,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("should get ArmError for failed requests", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(`{"error":{"code":"TestInternalError","message":"The is test internal error."}}`))
@@ -121,6 +123,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("should get correct ArmError when context timeout", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(1 * time.Second)
 			w.WriteHeader(http.StatusOK)
@@ -155,6 +158,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("should get correct ArmError when context canceled", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(1 * time.Second)
 			w.WriteHeader(http.StatusOK)
@@ -188,6 +192,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("should get correct ArmError for transport error", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -220,6 +225,7 @@ func TestArmRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("should get correct ArmError for server timeout", func(t *testing.T) {
+		t.Parallel()
 		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(1 * time.Second)
 			w.WriteHeader(http.StatusOK)
