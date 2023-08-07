@@ -16,11 +16,23 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 )
 
+const (
+	headerKeyRequestID                                    = "X-Ms-Client-Request-Id"
+	headerKeyCorrelationID                                = "X-Ms-Correlation-Request-id"
+	ArmErrorCodeCastToArmResponseErrorFailed ArmErrorCode = "CastToArmResponseErrorFailed"
+	ArmErrorCodeTransportError               ArmErrorCode = "TransportError"
+	ArmErrorCodeUnexpectedTransportError     ArmErrorCode = "UnexpectedTransportError"
+	ArmErrorCodeContextCanceled              ArmErrorCode = "ContextCanceled"
+	ArmErrorCodeContextDeadlineExceeded      ArmErrorCode = "ContextDeadlineExceeded"
+)
+
 // ArmError is unified Error Experience across AzureResourceManager, it contains Code Message.
 type ArmError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    ArmErrorCode `json:"code"`
+	Message string       `json:"message"`
 }
+
+type ArmErrorCode string
 
 type RequestInfo struct {
 	Request  *http.Request
@@ -47,10 +59,6 @@ type HttpConnTracking struct {
 	TlsLatency   string
 	Protocol     string
 	ReqConnInfo  *httptrace.GotConnInfo
-}
-
-func newResponseInfo(resp *http.Response, err *ArmError, latency time.Duration, connTracking *HttpConnTracking) *ResponseInfo {
-	return &ResponseInfo{Response: resp, Error: err, Latency: latency, ConnTracking: connTracking}
 }
 
 // ArmRequestMetricCollector is a interface that collectors need to implement.
@@ -95,6 +103,7 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 	started := time.Now()
 
 	p.requestStarted(requestInfo)
+
 	var resp *http.Response
 	var reqErr error
 
@@ -102,37 +111,32 @@ func (p *ArmRequestMetricPolicy) Do(req *policy.Request) (*http.Response, error)
 	// It's the calling user's responsibility to handle panics, not this policy
 	defer func() {
 		latency := time.Since(started)
-		var armErr *ArmError
+		respInfo := &ResponseInfo{
+			Response:     resp,
+			Latency:      latency,
+			ConnTracking: connTracking,
+		}
+
 		if reqErr != nil {
 			// either it's a transport error
 			// or it is already handled by previous policy
-			// TODO: distinguash
-			// - Context Cancelled (request configured context to have timeout)
-			// - ClientTimeout (context still valid, http client have timeout configured)
-			// - Transport Error (DNS/Dail/TLS/ServerTimeout)
-			armErr = &ArmError{Code: "TransportError", Message: reqErr.Error()}
+			respInfo.Error = parseTransportError(reqErr)
+		} else {
+			respInfo.Error = parseArmErrorFromResponse(resp)
 		}
 
-		if resp == nil {
-			armErr = &ArmError{Code: "UnexpectedTransporterBehavior", Message: "transport return nil, nil"}
+		// need to get the request id and correlation id from the response.request header
+		// because the headers were added by policy and might be called after this policy
+		if resp != nil && resp.Request != nil {
+			respInfo.RequestId = resp.Request.Header.Get(headerKeyRequestID)
+			respInfo.CorrelationId = resp.Request.Header.Get(headerKeyCorrelationID)
 		}
 
-		if resp != nil && resp.StatusCode > 399 {
-			// for 4xx, 5xx response, ARM should include {error:{code, message}} in the body
-			err := runtime.NewResponseError(resp)
-			respErr := &azcore.ResponseError{}
-			if errors.As(err, &respErr) {
-				armErr = &ArmError{Code: respErr.ErrorCode, Message: respErr.Error()}
-			} else {
-				armErr = &ArmError{Code: "NotAnArmError", Message: "Response body is not in ARM error form: {error:{code, message}}"}
-			}
-		}
-
-		p.requestCompleted(requestInfo, newResponseInfo(resp, armErr, latency, connTracking))
+		p.requestCompleted(requestInfo, respInfo)
 	}()
-	resp, reqErr = newARMReq.Next()
 
-	return resp, nil
+	resp, reqErr = newARMReq.Next()
+	return resp, reqErr
 }
 
 // shortcut function to handle nil collector
@@ -147,6 +151,39 @@ func (p *ArmRequestMetricPolicy) requestCompleted(iReq *RequestInfo, iResp *Resp
 	if p.Collector != nil {
 		p.Collector.RequestCompleted(iReq, iResp)
 	}
+}
+
+func parseArmErrorFromResponse(resp *http.Response) *ArmError {
+	if resp == nil {
+		return &ArmError{Code: ArmErrorCodeUnexpectedTransportError, Message: "nil response"}
+	}
+	if resp.StatusCode > 399 {
+		// for 4xx, 5xx response, ARM should include {error:{code, message}} in the body
+		err := runtime.NewResponseError(resp)
+		respErr := &azcore.ResponseError{}
+		if errors.As(err, &respErr) {
+			return &ArmError{Code: ArmErrorCode(respErr.ErrorCode), Message: respErr.Error()}
+		}
+		return &ArmError{Code: ArmErrorCodeCastToArmResponseErrorFailed, Message: fmt.Sprintf("Response body is not in ARM error form: {error:{code, message}}: %s", err.Error())}
+	}
+	return nil
+}
+
+// distinguash
+// - Context Cancelled (request configured context to have timeout)
+// - ClientTimeout (context still valid, http client have timeout configured)
+// - Transport Error (DNS/Dial/TLS/ServerTimeout)
+func parseTransportError(err error) *ArmError {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return &ArmError{Code: ArmErrorCodeContextCanceled, Message: err.Error()}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &ArmError{Code: ArmErrorCodeContextDeadlineExceeded, Message: err.Error()}
+	}
+	return &ArmError{Code: ArmErrorCodeTransportError, Message: err.Error()}
 }
 
 func addConnectionTracingToRequestContext(ctx context.Context, connTracking *HttpConnTracking) context.Context {
