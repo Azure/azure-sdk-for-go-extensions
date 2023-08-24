@@ -33,7 +33,10 @@ func DefaultArmOpts(userAgent string, logCollector ArmRequestMetricCollector, cu
 		runtime.NewRequestIDPolicy(),
 		&ArmRequestMetricPolicy{Collector: logCollector},
 	}
-	opts.PerCallPolicies = customPerCallPolicies
+	opts.PerCallPolicies = []policy.Policy{}
+	if customPerCallPolicies != nil {
+		opts.PerCallPolicies = append(opts.PerCallPolicies, customPerCallPolicies...)
+	}
 	return opts
 }
 
