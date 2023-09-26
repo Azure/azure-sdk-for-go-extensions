@@ -71,8 +71,7 @@ func init() {
 		// result in a substantial amount of throttling
 		PoolSize:  100,
 		Transport: defaultTransport,
-	},
-	)
+	})
 
 	defaultHTTPClient = &http.Client{
 		Transport: otelhttp.NewTransport(defaultRoundTripper, otelhttp.WithPropagators(propagation.TraceContext{})),
