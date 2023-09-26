@@ -3,7 +3,7 @@ module github.com/Azure/azure-sdk-for-go-extensions
 go 1.19
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.7.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.7.2
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2 v2.4.0
 	github.com/Azure/go-armbalancer v0.0.2
 	github.com/stretchr/testify v1.8.4
