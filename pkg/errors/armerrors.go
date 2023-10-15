@@ -37,6 +37,13 @@ func IsNotFoundErr(err error) bool {
 	return azErr != nil && azErr.ErrorCode == ResourceNotFound
 }
 
+// ZonalAllocationFailureOccurred communicates if we have failed to allocate a resource in a zone, and should try another zone.
+// To learn more about zonal allocation failures, visit: http://aka.ms/allocation-guidance
+func ZonalAllocationFailureOccurred(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == ZoneAllocationFailed
+}
+
 // SubscriptionQuotaHasBeenReached tells us if we have exceeded our Quota.
 func SubscriptionQuotaHasBeenReached(err error) bool {
 	azErr := IsResponseError(err)
