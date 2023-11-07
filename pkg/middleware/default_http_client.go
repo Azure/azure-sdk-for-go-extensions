@@ -15,7 +15,6 @@ limitations under the License.
 package middleware
 
 import (
-	"crypto/tls"
 	"net"
 	"net/http"
 	"time"
@@ -54,7 +53,6 @@ func init() {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       &tls.Config{},
 	}
 	// We call configureHttp2TransportPing() in the package init to ensure that our defaultTransport is always configured
 	// with the http2 additional settings that work around the issue described here:

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"crypto/tls"
 	"net/http"
 	"testing"
 
@@ -10,19 +9,13 @@ import (
 
 func TestConfigureHttp2TransportPing(t *testing.T) {
 	t.Run("transport should be setup with http2Transport h2 middleware", func(t *testing.T) {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{},
-		}
-		require.NotContains(t, tr.TLSClientConfig.NextProtos, "h2")
+		tr := &http.Transport{}
 		configureHttp2TransportPing(tr)
 		require.Contains(t, tr.TLSClientConfig.NextProtos, "h2")
 	})
 
 	t.Run("configuring transport twice panics", func(t *testing.T) {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{},
-		}
-		require.NotContains(t, tr.TLSClientConfig.NextProtos, "h2")
+		tr := &http.Transport{}
 		require.NotPanics(t, func() { configureHttp2TransportPing(tr) })
 		require.Panics(t, func() { configureHttp2TransportPing(tr) })
 		require.Contains(t, tr.TLSClientConfig.NextProtos, "h2")
