@@ -54,9 +54,7 @@ func init() {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
+		TLSClientConfig:       &tls.Config{},
 	}
 	// We call configureHttp2TransportPing() in the package init to ensure that our defaultTransport is always configured
 	// with the http2 additional settings that work around the issue described here:
@@ -74,7 +72,10 @@ func init() {
 	})
 
 	defaultHTTPClient = &http.Client{
-		Transport: otelhttp.NewTransport(defaultRoundTripper, otelhttp.WithPropagators(propagation.TraceContext{})),
+		Transport: otelhttp.NewTransport(
+			defaultRoundTripper,
+			otelhttp.WithPropagators(propagation.TraceContext{}),
+		),
 	}
 }
 

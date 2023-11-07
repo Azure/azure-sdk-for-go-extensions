@@ -11,9 +11,7 @@ import (
 func TestConfigureHttp2TransportPing(t *testing.T) {
 	t.Run("transport should be setup with http2Transport h2 middleware", func(t *testing.T) {
 		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
+			TLSClientConfig: &tls.Config{},
 		}
 		require.NotContains(t, tr.TLSClientConfig.NextProtos, "h2")
 		configureHttp2TransportPing(tr)
@@ -22,9 +20,7 @@ func TestConfigureHttp2TransportPing(t *testing.T) {
 
 	t.Run("configuring transport twice panics", func(t *testing.T) {
 		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
+			TLSClientConfig: &tls.Config{},
 		}
 		require.NotContains(t, tr.TLSClientConfig.NextProtos, "h2")
 		require.NotPanics(t, func() { configureHttp2TransportPing(tr) })
