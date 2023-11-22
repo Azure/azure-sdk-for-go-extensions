@@ -1,30 +1,21 @@
 package errors
 
-
 import (
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"testing"
+        "bytes"
+	"io"
+	"net/http"
 
-    "bytes"
-    "io"
-    "net/http"
-
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsNotFoundErr(t *testing.T) {
 	err1 := &azcore.ResponseError{ErrorCode: ResourceNotFound}
-	if !IsNotFoundErr(err1) {
-		t.Errorf("Expected IsNotFoundErr to return true for err1, but it returned false")
-	}
-
+	assert.Equal(t, IsNotFoundErr(err1), true)
 	err2 := &azcore.ResponseError{ErrorCode: "SomeOtherErrorCode"}
-	if IsNotFoundErr(err2) {
-		t.Errorf("Expected IsNotFoundErr to return false for err2, but it returned true")
-	}
-
-	if IsNotFoundErr(nil) {
-		t.Errorf("Expected IsNotFoundErr to return false for nil input, but it returned true")
-	}
+        assert.Equal(t, IsNotFoundErr(err2), false)
+	assert.Equal(t, IsNotFoundErr(nil), false)
 }
 
 
@@ -64,7 +55,7 @@ func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
     for _, tc := range testCases {
         t.Run(tc.description, func(t *testing.T) {
             if got := SKUFamilyQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("SKUFamilyQuotaHasBeenReached() = %v, want %v", got, tc.expected)
+                t.Errorf("SKUFamilyQuotaHasBeenReached() = %t, want %t", got, tc.expected)
             }
         })
     }
@@ -100,7 +91,7 @@ func TestZonalAllocationFailureOccurred(t *testing.T) {
     for _, tc := range testCases {
         t.Run(tc.description, func(t *testing.T) {
             if got := ZonalAllocationFailureOccurred(tc.responseError); got != tc.expected {
-                t.Errorf("ZonalAllocationFailureOccurred() = %v, want %v for %s", got, tc.expected, tc.description)
+                t.Errorf("ZonalAllocationFailureOccurred() = %t, want %t for %s", got, tc.expected, tc.description)
             }
         })
     }
@@ -138,7 +129,7 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
     for _, tc := range testCases {
         t.Run(tc.description, func(t *testing.T) {
             if got := RegionalQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("RegionalQuotaHasBeenReached() = %v, want %v for %s", got, tc.expected, tc.description)
+                t.Errorf("RegionalQuotaHasBeenReached() = %t, want %t for %s", got, tc.expected, tc.description)
             }
         })
     }
