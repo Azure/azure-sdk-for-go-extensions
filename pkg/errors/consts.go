@@ -8,6 +8,6 @@ const (
 	ZoneAllocationFailed = "ZonalAllocationFailed"
 
 	// Error search terms
-	SubscriptionQuotaExceededTerm = "Submit a request for Quota increase"
+	SubscriptionQuotaExceededTerm = "Family Cores quota"
 	RegionalQuotaExceededTerm     = "exceeding approved Total Regional Cores quota"
 )
