@@ -8,6 +8,7 @@ const (
 	ZoneAllocationFailed = "ZonalAllocationFailed"
 
 	// Error search terms
+	SKUFamilyQuotaExceededTerm = "Family Cores quota"
 	SubscriptionQuotaExceededTerm = "Submit a request for Quota increase"
 	RegionalQuotaExceededTerm     = "exceeding approved Total Regional Cores quota"
 )

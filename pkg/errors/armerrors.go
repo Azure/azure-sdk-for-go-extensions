@@ -44,13 +44,20 @@ func ZonalAllocationFailureOccurred(err error) bool {
 	return azErr != nil && azErr.ErrorCode == ZoneAllocationFailed
 }
 
+// SKUFamilyQuotaHasBeenReached tells us if we have exceeded our Quota.
+func SKUFamilyQuotaHasBeenReached(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), SKUFamilyQuotaExceededTerm)
+}
+
 // SubscriptionQuotaHasBeenReached tells us if we have exceeded our Quota.
 func SubscriptionQuotaHasBeenReached(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), SubscriptionQuotaExceededTerm)
 }
 
-// RegionalQuotaHasBeenReached communicates if we have reached the quota for a given region.
+
+// RegionalQuotaHasBeenReached communicates if we have reached the quota limit for a given region under a specific subscription
 func RegionalQuotaHasBeenReached(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
