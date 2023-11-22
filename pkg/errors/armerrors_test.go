@@ -35,7 +35,7 @@ type testCase struct {
     expected bool
 }
 
-func TestSubscriptionQuotaHasBeenReached(t *testing.T) {
+func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
     testCases := []testCase{
         {
             description: "Quota Exceeded",
@@ -63,8 +63,8 @@ func TestSubscriptionQuotaHasBeenReached(t *testing.T) {
 
     for _, tc := range testCases {
         t.Run(tc.description, func(t *testing.T) {
-            if got := SubscriptionQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("SubscriptionQuotaHasBeenReached() = %v, want %v", got, tc.expected)
+            if got := SKUFamilyQuotaHasBeenReached(tc.responseError); got != tc.expected {
+                t.Errorf("SKUFamilyQuotaHasBeenReached() = %v, want %v", got, tc.expected)
             }
         })
     }
