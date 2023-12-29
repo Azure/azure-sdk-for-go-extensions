@@ -63,7 +63,7 @@ func RegionalQuotaHasBeenReached(err error) bool {
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
 
-// IsNicReservedForAnotherVM occurs when a NIC is associated with another VM during deletion. This is a transient error and should be retried in 180 seconds.
+// IsNicReservedForAnotherVM occurs when a NIC is associated with another VM during deletion. See https://aka.ms/deletenic 
 func IsNicReservedForAnotherVM(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == NicReservedForAnotherVM
