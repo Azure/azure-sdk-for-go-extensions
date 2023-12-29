@@ -62,3 +62,15 @@ func RegionalQuotaHasBeenReached(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
+
+
+func IsNicReservedForAnotherVM(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == NicReservedForAnotherVM
+}
+
+// isSKUNotAvailable - to be moved to azure-sdk-for-go-extensions
+func IsSKUNotAvailable(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == SKUNotAvailableErrorCode
+}
