@@ -63,13 +63,13 @@ func RegionalQuotaHasBeenReached(err error) bool {
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
 
-
+// IsNicReservedForAnotherVM occurs when a NIC is associated with another VM during deletion. This is a transient error and should be retried in 180 seconds.
 func IsNicReservedForAnotherVM(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == NicReservedForAnotherVM
 }
 
-// isSKUNotAvailable - to be moved to azure-sdk-for-go-extensions
+// IsSKUNotAvailable https://aka.ms/azureskunotavailable: either not available for a location or zone, or out of capacity for Spot.
 func IsSKUNotAvailable(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == SKUNotAvailableErrorCode
