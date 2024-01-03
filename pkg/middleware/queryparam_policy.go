@@ -8,7 +8,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 )
 
-// this is a temperary place, will move it to https://github.com/azure/azure-sdk-for-go-extensions
 type QueryParameterPolicy struct {
 	Name    string
 	Value   string

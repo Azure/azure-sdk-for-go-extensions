@@ -2,8 +2,8 @@ package errors
 
 import (
 	"testing"
-        "bytes"
 	"io"
+        "strings"
 	"net/http"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -34,7 +34,7 @@ func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   "OperationNotAllowed",
                 StatusCode: http.StatusForbidden,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "OperationNotAllowed", "message": "Family Cores quota exceeded"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "Family Cores quota exceeded"}}`)),
                 },
             },
             expected: true,
@@ -45,7 +45,7 @@ func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   "ResourceNotFound",
                 StatusCode: http.StatusNotFound,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ResourceNotFound"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
                 },
             },
             expected: false,
@@ -70,7 +70,7 @@ func TestZonalAllocationFailureOccurred(t *testing.T) {
                 ErrorCode:   ZoneAllocationFailed,
                 StatusCode: http.StatusBadRequest,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ZonalAllocationFailed", "message": "Failed to allocate resources in the zone"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ZonalAllocationFailed", "message": "Failed to allocate resources in the zone"}}`)),
                 },
             },
             expected: true,
@@ -81,7 +81,7 @@ func TestZonalAllocationFailureOccurred(t *testing.T) {
                 ErrorCode:   "ResourceNotFound",
                 StatusCode: http.StatusNotFound,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ResourceNotFound"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
                 },
             },
             expected: false,
@@ -108,7 +108,7 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   OperationNotAllowed,
                 StatusCode: http.StatusForbidden,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "OperationNotAllowed", "message": "exceeding approved Total Regional Cores quota"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "exceeding approved Total Regional Cores quota"}}`)),
                 },
             },
             expected: true,
@@ -119,7 +119,7 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   "ResourceNotFound",
                 StatusCode: http.StatusNotFound,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ResourceNotFound"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
                 },
             },
             expected: false,
@@ -130,6 +130,84 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
         t.Run(tc.description, func(t *testing.T) {
             if got := RegionalQuotaHasBeenReached(tc.responseError); got != tc.expected {
                 t.Errorf("RegionalQuotaHasBeenReached() = %t, want %t for %s", got, tc.expected, tc.description)
+            }
+        })
+    }
+}
+
+func TestIsNicReservedForAnotherVM(t *testing.T) {
+    testCases := []struct {
+        description   string
+        responseError error
+        expected      bool
+    }{
+        {
+            description: "NIC Reserved for Another VM",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   NicReservedForAnotherVM,
+                StatusCode:  http.StatusForbidden,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "NicReservedForAnotherVm"}}`)),
+                },
+            },
+            expected: true,
+        },
+        {
+            description: "Different Error Code",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   "ResourceNotFound",
+                StatusCode:  http.StatusNotFound,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
+                },
+            },
+            expected: false,
+        },
+    }
+
+    for _, tc := range testCases {
+        t.Run(tc.description, func(t *testing.T) {
+            if got := IsNicReservedForAnotherVM(tc.responseError); got != tc.expected {
+                t.Errorf("IsNicReservedForAnotherVM() = %t, want %t for %s", got, tc.expected, tc.description)
+            }
+        })
+    }
+}
+
+func TestIsSKUNotAvailable(t *testing.T) {
+    testCases := []struct {
+        description   string
+        responseError error
+        expected      bool
+    }{
+        {
+            description: "SKU Not Available",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   SKUNotAvailableErrorCode,
+                StatusCode:  http.StatusForbidden,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "SKUNotAvailable"}}`)),
+                },
+            },
+            expected: true,
+        },
+        {
+            description: "Different Error Code",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   "ResourceNotFound",
+                StatusCode:  http.StatusNotFound,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
+                },
+            },
+            expected: false,
+        },
+    }
+
+    for _, tc := range testCases {
+        t.Run(tc.description, func(t *testing.T) {
+            if got := IsSKUNotAvailable(tc.responseError); got != tc.expected {
+                t.Errorf("IsSKUNotAvailable() = %t, want %t for %s", got, tc.expected, tc.description)
             }
         })
     }
