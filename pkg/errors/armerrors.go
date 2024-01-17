@@ -62,3 +62,8 @@ func RegionalQuotaHasBeenReached(err error) bool {
 	azErr := IsResponseError(err)
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
+
+func LowPriorityQuotaHasBeenReached(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), LowPriorityQuotaExceededTerm)
+}

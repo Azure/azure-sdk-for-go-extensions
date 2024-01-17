@@ -135,3 +135,40 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
     }
 }
 
+
+
+func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
+    testCases := []testCase{
+        {
+            description: "LowPriority Quota Exceeded",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   OperationNotAllowed,
+                StatusCode: http.StatusForbidden,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "OperationNotAllowed", "message": "Operation could not be completed as it results in exceeding approved LowPriorityCores quota"}}`))),
+                },
+            },
+            expected: true,
+        },
+        {
+            description: "Different Error Code",
+            responseError: &azcore.ResponseError{
+                ErrorCode:   "ResourceNotFound",
+                StatusCode: http.StatusNotFound,
+                RawResponse: &http.Response{
+                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ResourceNotFound"}}`))),
+                },
+            },
+            expected: false,
+        },
+    }
+
+    for _, tc := range testCases {
+        t.Run(tc.description, func(t *testing.T) {
+            if got := LowPriorityQuotaHasBeenReached(tc.responseError); got != tc.expected {
+                t.Errorf("LowPriorityQuotaHasBeenReached() = %t, want %t for %s", got, tc.expected, tc.description)
+            }
+        })
+    }
+}
+
