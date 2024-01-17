@@ -222,7 +222,7 @@ func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   OperationNotAllowed,
                 StatusCode: http.StatusForbidden,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "OperationNotAllowed", "message": "Operation could not be completed as it results in exceeding approved LowPriorityCores quota"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "Operation could not be completed as it results in exceeding approved LowPriorityCores quota"}}`)),
                 },
             },
             expected: true,
@@ -233,7 +233,7 @@ func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
                 ErrorCode:   "ResourceNotFound",
                 StatusCode: http.StatusNotFound,
                 RawResponse: &http.Response{
-                    Body: io.NopCloser(bytes.NewReader([]byte(`{"error": {"code": "ResourceNotFound"}}`))),
+                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
                 },
             },
             expected: false,
