@@ -6,6 +6,9 @@ const (
 	ResourceNotFound     = "ResourceNotFound"
 	OperationNotAllowed  = "OperationNotAllowed"
 	ZoneAllocationFailed = "ZonalAllocationFailed"
+	NicReservedForAnotherVM = "NicReservedForAnotherVm"
+	SKUNotAvailableErrorCode = "SkuNotAvailable"
+	
 
 	// Error search terms
 	LowPriorityQuotaExceededTerm = "LowPriorityCores"
