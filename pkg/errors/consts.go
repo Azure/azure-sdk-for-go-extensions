@@ -11,6 +11,7 @@ const (
 	
 
 	// Error search terms
+	LowPriorityQuotaExceededTerm = "LowPriorityCores"
 	SKUFamilyQuotaExceededTerm = "Family Cores quota"
 	SubscriptionQuotaExceededTerm = "Submit a request for Quota increase"
 	RegionalQuotaExceededTerm     = "exceeding approved Total Regional Cores quota"

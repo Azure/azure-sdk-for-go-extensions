@@ -63,6 +63,12 @@ func RegionalQuotaHasBeenReached(err error) bool {
 	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), RegionalQuotaExceededTerm)
 }
 
+// LowPriorityQuotaHasBeenReached communicates if we have reached the quota limit for low priority VMs under a specific subscription 
+// Low priority VMs are generally Spot VMs, but can also be low priority VMs created via the Azure CLI or Azure Portal 
+func LowPriorityQuotaHasBeenReached(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && azErr.ErrorCode == OperationNotAllowed && strings.Contains(azErr.Error(), LowPriorityQuotaExceededTerm)
+}
 // IsNicReservedForAnotherVM occurs when a NIC is associated with another VM during deletion. See https://aka.ms/deletenic 
 func IsNicReservedForAnotherVM(err error) bool {
 	azErr := IsResponseError(err)
