@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.12.0
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.6.0
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v2 v2.4.0
 	github.com/Azure/go-armbalancer v0.0.3
 	github.com/google/uuid v1.6.0
@@ -13,7 +13,7 @@ require (
 	go.opentelemetry.io/otel v1.21.0
 	golang.org/x/net v0.26.0
 	gopkg.in/dnaeon/go-vcr.v3 v3.2.0
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.26
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.28
 )
 
 require (
