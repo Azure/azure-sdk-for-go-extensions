@@ -15,11 +15,80 @@ limitations under the License.
 package errors
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
+
+type CreationResponseError struct {
+	*azcore.ResponseError
+}
+
+// TODO - this is a very WIP dummy implementation, trying to gather thoughts first before I make it more robust
+func (e *CreationResponseError) Error() string {
+	msg := &bytes.Buffer{}
+	if e.RawResponse != nil {
+		fmt.Fprintf(msg, "RESPONSE %d: %s\n", e.RawResponse.StatusCode, e.RawResponse.Status)
+	} else {
+		fmt.Fprintln(msg, "RESPONSE: Unknown (Missing RawResponse)")
+	}
+
+	if e.ErrorCode != "" {
+		fmt.Fprintf(msg, "ERROR CODE: %s\n", e.ErrorCode)
+	} else {
+		// TODO - whats the difference between this code and the one in response body
+		fmt.Fprintln(msg, "ERROR CODE: UNAVAILABLE")
+	}
+
+	if e.RawResponse != nil {
+		body, err := io.ReadAll(e.RawResponse.Body)
+		if err != nil {
+			fmt.Fprintln(msg, "Error reading response body:", err)
+		}
+
+		if len(body) > 0 {
+			if err := json.Indent(msg, body, "", "  "); err != nil {
+				// failed to pretty-print so just dump it verbatim
+				fmt.Fprint(msg, string(body))
+			}
+			// the standard library doesn't have a pretty-printer for XML
+			fmt.Fprintln(msg)
+		} else {
+			fmt.Fprintln(msg, "Response contained no body")
+		}
+
+		e.RawResponse.Body.Close()
+	}
+
+	// After showing the important information, add request details
+	if e.RawResponse != nil && e.RawResponse.Request != nil {
+		fmt.Fprintf(msg, "REQUEST: %s %s://%s%s\n",
+			e.RawResponse.Request.Method,
+			e.RawResponse.Request.URL.Scheme,
+			e.RawResponse.Request.URL.Host,
+			e.RawResponse.Request.URL.Path)
+	} else {
+		fmt.Fprintln(msg, "REQUEST: Information not available")
+	}
+
+	return msg.String()
+}
+
+func (e *CreationResponseError) Unwrap() error {
+	return e.ResponseError
+}
+
+func IsCreationResponseError(err error) *CreationResponseError {
+	if azErr := IsResponseError(err); azErr != nil {
+		return &CreationResponseError{azErr}
+	}
+	return nil
+}
 
 // IsResponseError checks if the error is of type *azcore.ResponseError
 // and returns the response error or nil if it's not.
