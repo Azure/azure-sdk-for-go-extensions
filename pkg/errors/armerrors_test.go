@@ -1,10 +1,11 @@
 package errors
 
 import (
-	"testing"
+	"fmt"
 	"io"
-        "strings"
 	"net/http"
+	"strings"
+	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/stretchr/testify/assert"
@@ -14,237 +15,146 @@ func TestIsNotFoundErr(t *testing.T) {
 	err1 := &azcore.ResponseError{ErrorCode: ResourceNotFound}
 	assert.Equal(t, IsNotFoundErr(err1), true)
 	err2 := &azcore.ResponseError{ErrorCode: "SomeOtherErrorCode"}
-        assert.Equal(t, IsNotFoundErr(err2), false)
+	assert.Equal(t, IsNotFoundErr(err2), false)
 	assert.Equal(t, IsNotFoundErr(nil), false)
 }
 
-
-
 type testCase struct {
-    description        string
-    responseError      *azcore.ResponseError
-    expected bool
+	description   string
+	responseError error
+	expected      bool
+}
+
+type errorTestFunc func(error) bool
+
+func createResponseError(errorCode string, statusCode int, errorMessage string) *azcore.ResponseError {
+	errorBody := fmt.Sprintf(`{"error": {"code": "%s", "message": "%s"}}`, errorCode, errorMessage)
+	return &azcore.ResponseError{
+		ErrorCode:  errorCode,
+		StatusCode: statusCode,
+		RawResponse: &http.Response{
+			Body: io.NopCloser(strings.NewReader(errorBody)),
+		},
+	}
+}
+
+func runErrorTests(t *testing.T, testName string, testCases []testCase, testFunc errorTestFunc) {
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			got := testFunc(tc.responseError)
+			if got != tc.expected {
+				t.Errorf("%s() = %t, want %t for %s", testName, got, tc.expected, tc.description)
+			}
+		})
+	}
+}
+
+// creates test cases for simple error code comparisons
+func createSimpleErrorCodeTests(errorCode string, description string) []testCase {
+	return []testCase{
+		{
+			description:   description,
+			responseError: createResponseError(errorCode, http.StatusBadRequest, "Some error message"),
+			expected:      true,
+		},
+		{
+			description:   "Different Error Code",
+			responseError: createResponseError(ResourceNotFound, http.StatusNotFound, ""),
+			expected:      false,
+		},
+	}
+}
+
+// creates test cases for errors that depend on both error code and message content
+func createMessageContainsTests(errorCode string, statusCode int, message string, description string) []testCase {
+	return []testCase{
+		{
+			description:   description,
+			responseError: createResponseError(errorCode, statusCode, message),
+			expected:      true,
+		},
+		{
+			description:   "Different Error Code",
+			responseError: createResponseError(ResourceNotFound, http.StatusNotFound, ""),
+			expected:      false,
+		},
+	}
 }
 
 func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
-    testCases := []testCase{
-        {
-            description: "Quota Exceeded",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "OperationNotAllowed",
-                StatusCode: http.StatusForbidden,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "Family Cores quota exceeded"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode: http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := SKUFamilyQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("SKUFamilyQuotaHasBeenReached() = %t, want %t", got, tc.expected)
-            }
-        })
-    }
+	testCases := createMessageContainsTests(
+		OperationNotAllowed,
+		http.StatusForbidden,
+		"Family Cores quota exceeded",
+		"Quota Exceeded",
+	)
+	runErrorTests(t, "SKUFamilyQuotaHasBeenReached", testCases, SKUFamilyQuotaHasBeenReached)
 }
-
 
 func TestZonalAllocationFailureOccurred(t *testing.T) {
-    testCases := []testCase{
-        {
-            description: "Zonal Allocation Failed",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   ZoneAllocationFailed,
-                StatusCode: http.StatusBadRequest,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ZonalAllocationFailed", "message": "Failed to allocate resources in the zone"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode: http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := ZonalAllocationFailureOccurred(tc.responseError); got != tc.expected {
-                t.Errorf("ZonalAllocationFailureOccurred() = %t, want %t for %s", got, tc.expected, tc.description)
-            }
-        })
-    }
+	testCases := createSimpleErrorCodeTests(
+		ZoneAllocationFailed,
+		"Zonal Allocation Failed",
+	)
+	runErrorTests(t, "ZonalAllocationFailureOccurred", testCases, ZonalAllocationFailureOccurred)
 }
 
+func TestAllocationFailureOccured(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		AllocationFailed,
+		"Allocation Failed",
+	)
+	runErrorTests(t, "AllocationFailureOccurred", testCases, AllocationFailureOccurred)
+}
 
+func TestOverConstrainedAllocationFailureOccurred(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		OverconstrainedAllocationRequest,
+		"Overconstrained Allocation Failed",
+	)
+	runErrorTests(t, "OverconstrainedAllocationFailureOccurred", testCases, OverconstrainedAllocationFailureOccurred)
+}
 
+func TestOverConstrainedZonalAllocationFailureOccurred(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		OverconstrainedZonalAllocationRequest,
+		"Overconstrained Zonal Allocation Failed",
+	)
+	runErrorTests(t, "OverconstrainedZonalAllocationFailureOccurred", testCases, OverconstrainedZonalAllocationFailureOccurred)
+}
 
 func TestRegionalQuotaHasBeenReached(t *testing.T) {
-    testCases := []testCase{
-        {
-            description: "Regional Quota Exceeded",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   OperationNotAllowed,
-                StatusCode: http.StatusForbidden,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "exceeding approved Total Regional Cores quota"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode: http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := RegionalQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("RegionalQuotaHasBeenReached() = %t, want %t for %s", got, tc.expected, tc.description)
-            }
-        })
-    }
+	testCases := createMessageContainsTests(
+		OperationNotAllowed,
+		http.StatusForbidden,
+		"exceeding approved Total Regional Cores quota",
+		"Regional Quota Exceeded",
+	)
+	runErrorTests(t, "RegionalQuotaHasBeenReached", testCases, RegionalQuotaHasBeenReached)
 }
 
-
 func TestIsNicReservedForAnotherVM(t *testing.T) {
-    testCases := []struct {
-        description   string
-        responseError error
-        expected      bool
-    }{
-        {
-            description: "NIC Reserved for Another VM",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   NicReservedForAnotherVM,
-                StatusCode:  http.StatusForbidden,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "NicReservedForAnotherVm"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode:  http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := IsNicReservedForAnotherVM(tc.responseError); got != tc.expected {
-                t.Errorf("IsNicReservedForAnotherVM() = %t, want %t for %s", got, tc.expected, tc.description)
-            }
-        })
-    }
+	testCases := createSimpleErrorCodeTests(
+		NicReservedForAnotherVM,
+		"NIC Reserved for Another VM",
+	)
+	runErrorTests(t, "IsNicReservedForAnotherVM", testCases, IsNicReservedForAnotherVM)
 }
 
 func TestIsSKUNotAvailable(t *testing.T) {
-    testCases := []struct {
-        description   string
-        responseError error
-        expected      bool
-    }{
-        {
-            description: "SKU Not Available",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   SKUNotAvailableErrorCode,
-                StatusCode:  http.StatusForbidden,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "SKUNotAvailable"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode:  http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := IsSKUNotAvailable(tc.responseError); got != tc.expected {
-                t.Errorf("IsSKUNotAvailable() = %t, want %t for %s", got, tc.expected, tc.description)
-            }
-        })
-    }
+	testCases := createSimpleErrorCodeTests(
+		SKUNotAvailableErrorCode,
+		"SKU Not Available",
+	)
+	runErrorTests(t, "IsSKUNotAvailable", testCases, IsSKUNotAvailable)
 }
 
 func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
-    testCases := []testCase{
-        {
-            description: "LowPriority Quota Exceeded",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   OperationNotAllowed,
-                StatusCode: http.StatusForbidden,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "OperationNotAllowed", "message": "Operation could not be completed as it results in exceeding approved LowPriorityCores quota"}}`)),
-                },
-            },
-            expected: true,
-        },
-        {
-            description: "Different Error Code",
-            responseError: &azcore.ResponseError{
-                ErrorCode:   "ResourceNotFound",
-                StatusCode: http.StatusNotFound,
-                RawResponse: &http.Response{
-                    Body: io.NopCloser(strings.NewReader(`{"error": {"code": "ResourceNotFound"}}`)),
-                },
-            },
-            expected: false,
-        },
-    }
-
-    for _, tc := range testCases {
-        t.Run(tc.description, func(t *testing.T) {
-            if got := LowPriorityQuotaHasBeenReached(tc.responseError); got != tc.expected {
-                t.Errorf("LowPriorityQuotaHasBeenReached() = %t, want %t for %s", got, tc.expected, tc.description)
-            }
-        })
-    }
+	testCases := createMessageContainsTests(
+		OperationNotAllowed,
+		http.StatusForbidden,
+		"Operation could not be completed as it results in exceeding approved LowPriorityCores quota",
+		"LowPriority Quota Exceeded",
+	)
+	runErrorTests(t, "LowPriorityQuotaHasBeenReached", testCases, LowPriorityQuotaHasBeenReached)
 }
