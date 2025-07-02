@@ -78,6 +78,18 @@ func Test_httpConnTrackingThreadSafety(t *testing.T) {
 
 // BenchmarkHttpConnTracking benchmarks the performance of HttpConnTracking
 // with real HTTP requests to validate the performance impact of synchronization.
+//
+// Benchmark results:
+// goos: linux
+// goarch: amd64
+// pkg: github.com/Azure/azure-sdk-for-go-extensions/pkg/middleware
+// cpu: AMD EPYC 7763 64-Core Processor                
+// BenchmarkHttpConnTracking/WithGetterMethods-16         	     516	   2228617 ns/op	   92211 B/op	     984 allocs/op
+// BenchmarkHttpConnTracking/WithDirectFieldAccess-16     	     540	   2223993 ns/op	   92188 B/op	     984 allocs/op
+// BenchmarkHttpConnTracking/ConcurrentGetterAccess-16    	 5319430	       219.7 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkHttpConnTracking/ConcurrentDirectAccess-16    	1000000000	         0.08260 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkHttpConnTracking/MutexOverhead-16             	254370688	         4.808 ns/op	       0 B/op	       0 allocs/op
+// PASS
 func BenchmarkHttpConnTracking(b *testing.B) {
 	// Create a test HTTP server that responds quickly to minimize network overhead
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
