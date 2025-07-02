@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptrace"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -53,12 +54,93 @@ type ResponseInfo struct {
 }
 
 type HttpConnTracking struct {
+	mu sync.RWMutex
+	// Thread-safe access to these fields is provided via getter methods.
+	// Direct field access may not be thread-safe during concurrent HTTP operations.
 	TotalLatency string
 	DnsLatency   string
 	ConnLatency  string
 	TlsLatency   string
 	Protocol     string
 	ReqConnInfo  *httptrace.GotConnInfo
+}
+
+// GetTotalLatency returns the total latency in a thread-safe manner
+func (h *HttpConnTracking) GetTotalLatency() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.TotalLatency
+}
+
+// GetDnsLatency returns the DNS latency in a thread-safe manner
+func (h *HttpConnTracking) GetDnsLatency() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.DnsLatency
+}
+
+// GetConnLatency returns the connection latency in a thread-safe manner
+func (h *HttpConnTracking) GetConnLatency() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.ConnLatency
+}
+
+// GetTlsLatency returns the TLS latency in a thread-safe manner
+func (h *HttpConnTracking) GetTlsLatency() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.TlsLatency
+}
+
+// GetProtocol returns the negotiated protocol in a thread-safe manner
+func (h *HttpConnTracking) GetProtocol() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.Protocol
+}
+
+// GetReqConnInfo returns the connection info in a thread-safe manner
+func (h *HttpConnTracking) GetReqConnInfo() *httptrace.GotConnInfo {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.ReqConnInfo
+}
+
+func (h *HttpConnTracking) setTotalLatency(latency string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.TotalLatency = latency
+}
+
+func (h *HttpConnTracking) setDnsLatency(latency string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.DnsLatency = latency
+}
+
+func (h *HttpConnTracking) setConnLatency(latency string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ConnLatency = latency
+}
+
+func (h *HttpConnTracking) setTlsLatency(latency string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.TlsLatency = latency
+}
+
+func (h *HttpConnTracking) setProtocol(protocol string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.Protocol = protocol
+}
+
+func (h *HttpConnTracking) setReqConnInfo(info *httptrace.GotConnInfo) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ReqConnInfo = info
 }
 
 // ArmRequestMetricCollector is a interface that collectors need to implement.
@@ -195,10 +277,10 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 		},
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if getConn != nil {
-				connTracking.TotalLatency = fmt.Sprintf("%dms", time.Now().Sub(*getConn).Milliseconds())
+				connTracking.setTotalLatency(fmt.Sprintf("%dms", time.Now().Sub(*getConn).Milliseconds()))
 			}
 
-			connTracking.ReqConnInfo = &connInfo
+			connTracking.setReqConnInfo(&connInfo)
 		},
 		DNSStart: func(_ httptrace.DNSStartInfo) {
 			dnsStart = to.Ptr(time.Now())
@@ -206,10 +288,10 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 		DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
 			if dnsInfo.Err == nil {
 				if dnsStart != nil {
-					connTracking.DnsLatency = fmt.Sprintf("%dms", time.Now().Sub(*dnsStart).Milliseconds())
+					connTracking.setDnsLatency(fmt.Sprintf("%dms", time.Now().Sub(*dnsStart).Milliseconds()))
 				}
 			} else {
-				connTracking.DnsLatency = dnsInfo.Err.Error()
+				connTracking.setDnsLatency(dnsInfo.Err.Error())
 			}
 		},
 		ConnectStart: func(_, _ string) {
@@ -218,10 +300,10 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 		ConnectDone: func(_, _ string, err error) {
 			if err == nil {
 				if connStart != nil {
-					connTracking.ConnLatency = fmt.Sprintf("%dms", time.Now().Sub(*connStart).Milliseconds())
+					connTracking.setConnLatency(fmt.Sprintf("%dms", time.Now().Sub(*connStart).Milliseconds()))
 				}
 			} else {
-				connTracking.ConnLatency = err.Error()
+				connTracking.setConnLatency(err.Error())
 			}
 		},
 		TLSHandshakeStart: func() {
@@ -230,11 +312,11 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 		TLSHandshakeDone: func(t tls.ConnectionState, err error) {
 			if err == nil {
 				if tlsStart != nil {
-					connTracking.TlsLatency = fmt.Sprintf("%dms", time.Now().Sub(*tlsStart).Milliseconds())
+					connTracking.setTlsLatency(fmt.Sprintf("%dms", time.Now().Sub(*tlsStart).Milliseconds()))
 				}
-				connTracking.Protocol = t.NegotiatedProtocol
+				connTracking.setProtocol(t.NegotiatedProtocol)
 			} else {
-				connTracking.TlsLatency = err.Error()
+				connTracking.setTlsLatency(err.Error())
 			}
 		},
 	}

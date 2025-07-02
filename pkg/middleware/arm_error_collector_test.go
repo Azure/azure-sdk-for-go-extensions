@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/url"
 	"testing"
 	"time"
@@ -314,4 +317,40 @@ func (m *mockTokenCredential) GetToken(ctx context.Context, opts policy.TokenReq
 		Token:     "fakeToken",
 		ExpiresOn: time.Now().Add(1 * time.Hour),
 	}, nil
+}
+
+func Test_httpConnTracking(t *testing.T) {
+	t.Parallel()
+	for i := range 100 {
+		t.Run(fmt.Sprintf("test %d", i), func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancelRootCtx := context.WithCancel(context.Background())
+			defer cancelRootCtx()
+
+			connTracking := new(HttpConnTracking)
+
+			ctxWithConnTracking := addConnectionTracingToRequestContext(ctx, connTracking)
+			clientTrace := httptrace.ContextClientTrace(ctxWithConnTracking)
+			originalDNSStart := clientTrace.DNSStart
+			clientTrace.DNSStart = func(di httptrace.DNSStartInfo) {
+				originalDNSStart(di)
+				cancelRootCtx() // cancel the root context to simulate a half done DNS request
+			}
+
+			func() {
+				defer func() {
+					fmt.Printf("READ: dns latency %q\n", connTracking.GetDnsLatency()) // simulate logging usage - using thread-safe getter
+				}()
+
+				req, err := http.NewRequestWithContext(ctxWithConnTracking, http.MethodGet, "https://example.com", nil)
+				if err != nil {
+					t.Fatalf("failed to create request: %v", err)
+				}
+				if _, err := http.DefaultClient.Do(req); !errors.Is(err, context.Canceled) {
+					t.Fatalf("unexpected request error: %v", err)
+				}
+			}()
+		})
+	}
 }
