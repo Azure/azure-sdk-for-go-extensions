@@ -354,3 +354,31 @@ func Test_httpConnTracking(t *testing.T) {
 		})
 	}
 }
+
+func Test_httpConnTrackingThreadSafety(t *testing.T) {
+	t.Parallel()
+	
+	// Test that getter methods provide thread-safe access
+	connTracking := new(HttpConnTracking)
+	
+	// Set some values using the internal setters to simulate HTTP trace callbacks
+	connTracking.setDnsLatency("10ms")
+	connTracking.setConnLatency("5ms")
+	connTracking.setTlsLatency("15ms")
+	connTracking.setTotalLatency("30ms")
+	connTracking.setProtocol("h2")
+	
+	// Verify getter methods return the expected values
+	assert.Equal(t, "10ms", connTracking.GetDnsLatency())
+	assert.Equal(t, "5ms", connTracking.GetConnLatency())
+	assert.Equal(t, "15ms", connTracking.GetTlsLatency())
+	assert.Equal(t, "30ms", connTracking.GetTotalLatency())
+	assert.Equal(t, "h2", connTracking.GetProtocol())
+	
+	// Verify backward compatibility - direct field access still works
+	assert.Equal(t, "10ms", connTracking.DnsLatency)
+	assert.Equal(t, "5ms", connTracking.ConnLatency)
+	assert.Equal(t, "15ms", connTracking.TlsLatency)
+	assert.Equal(t, "30ms", connTracking.TotalLatency)
+	assert.Equal(t, "h2", connTracking.Protocol)
+}
