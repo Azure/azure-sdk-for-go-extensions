@@ -101,7 +101,7 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 	// See responseErrorWrapper_test.go for an example of the expected format
 	matches := errorMessageRegex.FindStringSubmatch(fullError)
 
-	if len(matches) < 1 {
+	if len(matches) < 2 {
 		return "UNAVAILABLE"
 	}
 
