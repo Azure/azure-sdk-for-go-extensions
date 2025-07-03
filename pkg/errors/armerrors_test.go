@@ -81,7 +81,7 @@ func TestZonalAllocationFailureOccurred(t *testing.T) {
 	checkErrors(t, "ZonalAllocationFailureOccurred", testCases, ZonalAllocationFailureOccurred)
 }
 
-func TestAllocationFailureOccured(t *testing.T) {
+func TestAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(
 		AllocationFailed,
 		"Allocation Failed",
