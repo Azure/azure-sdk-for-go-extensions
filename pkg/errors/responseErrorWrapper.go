@@ -8,6 +8,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
 
+var errorMessageRegex = regexp.MustCompile(`"message"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+
 type ResponseErrorWrapper struct {
 	respErr *azcore.ResponseError
 	message string
@@ -21,9 +23,7 @@ func NewResponseErrorWrapper(respErr *azcore.ResponseError) *ResponseErrorWrappe
 
 func AsWrappedResponseError(err error) *ResponseErrorWrapper {
 	if azErr := IsResponseError(err); azErr != nil {
-		return &ResponseErrorWrapper{
-			respErr: azErr,
-		}
+		return NewResponseErrorWrapper(azErr)
 	}
 	return nil
 }
@@ -67,59 +67,43 @@ func buildWrapperErrorMessage(respErr *azcore.ResponseError) string {
 // extractRequestInfo extracts HTTP method and URL with proper nil checks
 func extractRequestInfo(respErr *azcore.ResponseError) (string, string) {
 	method := "UNKNOWN"
-	url := "UNAVAILABLE"
+	requestURL := "UNAVAILABLE"
 
 	if respErr.RawResponse == nil || respErr.RawResponse.Request == nil {
-		return method, url
+		return method, requestURL
 	}
 
 	req := respErr.RawResponse.Request
 	method = req.Method
 
 	if req.URL != nil {
-		// Build URL with nil checks
-		scheme := req.URL.Scheme
-		host := req.URL.Host
-		path := req.URL.Path
-
-		if scheme != "" && host != "" {
-			url = fmt.Sprintf("%s://%s%s", scheme, host, path)
-		} else if host != "" {
-			url = fmt.Sprintf("%s%s", host, path)
-		} else {
-			url = path
-		}
+		requestURL = req.URL.String()
 	}
 
-	return method, url
+	return method, requestURL
 }
 
 // attempt to extract the error message from ResponseError using a regex.
 // This is best effort based on the formats we encountered - if we fail to find a match, we return "UNAVAILABLE"
 func extractErrorMessage(respErr *azcore.ResponseError) string {
-	if respErr == nil {
-		return "UNAVAILABLE"
-	}
-
 	// Get the full error string which contains the JSON body
 	fullError := respErr.Error()
 
 	// Use regex to extract the message from the JSON in the error string
 	// This pattern looks for "message": "..." in the JSON
 	// See responseErrorWrapper_test.go for an example of the expected format
-	re := regexp.MustCompile(`"message"\s*:\s*"((?:[^"\\]|\\.)*)"`)
-	matches := re.FindStringSubmatch(fullError)
+	matches := errorMessageRegex.FindStringSubmatch(fullError)
 
-	if len(matches) > 1 {
-		// Unescape common JSON escape sequences
-		message := matches[1]
-		message = strings.ReplaceAll(message, `\"`, `"`)
-		message = strings.ReplaceAll(message, `\\`, `\`)
-		message = strings.ReplaceAll(message, `\n`, " ")
-		message = strings.ReplaceAll(message, `\t`, " ")
-		message = strings.ReplaceAll(message, `\r`, " ")
-		return message
+	if len(matches) < 1 {
+		return "UNAVAILABLE"
 	}
 
-	return "UNAVAILABLE"
+	// Unescape common JSON escape sequences
+	message := matches[1]
+	message = strings.ReplaceAll(message, `\"`, `"`)
+	message = strings.ReplaceAll(message, `\\`, `\`)
+	message = strings.ReplaceAll(message, `\n`, " ")
+	message = strings.ReplaceAll(message, `\t`, " ")
+	message = strings.ReplaceAll(message, `\r`, " ")
+	return message
 }
