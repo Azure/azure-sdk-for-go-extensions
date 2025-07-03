@@ -3,12 +3,19 @@ package errors
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
 
-var errorMessageRegex = regexp.MustCompile(`"message"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+var errorMessageRegex = regexp.MustCompile(`"message"\s*:\s*("(?:[^"\\]|\\.)*")`)
+
+var jsonUnescaper = strings.NewReplacer(
+	"\n", " ",
+	"\t", " ",
+	"\r", " ",
+)
 
 type ResponseErrorWrapper struct {
 	respErr *azcore.ResponseError
@@ -98,12 +105,11 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 		return "UNAVAILABLE"
 	}
 
-	// Unescape common JSON escape sequences
-	message := matches[1]
-	message = strings.ReplaceAll(message, `\"`, `"`)
-	message = strings.ReplaceAll(message, `\\`, `\`)
-	message = strings.ReplaceAll(message, `\n`, " ")
-	message = strings.ReplaceAll(message, `\t`, " ")
-	message = strings.ReplaceAll(message, `\r`, " ")
-	return message
+	unquoted, err := strconv.Unquote(matches[1])
+	if err != nil {
+		// Fallback to raw message if unquoting fails
+		return matches[1]
+	}
+
+	return jsonUnescaper.Replace(unquoted)
 }
