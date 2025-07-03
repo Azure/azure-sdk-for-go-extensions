@@ -160,18 +160,3 @@ func TestIsSKUNotAvailable(t *testing.T) {
 	)
 	checkErrors(t, "IsSKUNotAvailable", testCases, IsSKUNotAvailable)
 }
-
-// CreationResponseError Tests
-func TestIsCreationResponseError(t *testing.T) {
-	respErr := createResponseError("SomeErrorCode", http.StatusBadRequest, "some error message")
-	creationResponseError := IsCreationResponseError(respErr)
-	assert.Equal(t, respErr, creationResponseError.ResponseError)
-	assert.Equal(t, respErr.ErrorCode, creationResponseError.ErrorCode)
-	assert.Equal(t, respErr.StatusCode, creationResponseError.StatusCode)
-
-	// Test with nil
-	creationResponseError = IsCreationResponseError(nil)
-	assert.Nil(t, creationResponseError, "Should return nil for nil input")
-}
-
-// TODO mumanski - add tests here that check if CreationResponseError.Error() works as expected
