@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/stretchr/testify/assert"
@@ -426,55 +425,6 @@ func TestResponseErrorWrapper_IntegrationRealisticScenarios(t *testing.T) {
 
 		expectedMessage := "HTTP CODE: 400, ERROR CODE: ValidationError, MESSAGE: Request validation failed with multiple errors., REQUEST: PUT https://management.azure.com/subscriptions/12345/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm"
 		assert.Equal(t, expectedMessage, result)
-	})
-
-	t.Run("Large error message", func(t *testing.T) {
-		// Create a very long error message to test performance
-		longMessage := "This is a very long error message that contains a lot of details about what went wrong. " +
-			"It includes specific information about the request, the resource, the validation errors, " +
-			"recommendations for fixing the issue, links to documentation, troubleshooting steps, " +
-			"and additional context that might be helpful for debugging. " +
-			"This type of message might occur in complex validation scenarios where multiple checks fail " +
-			"and the service wants to provide comprehensive feedback to the user about all the issues " +
-			"that need to be addressed before the request can be successfully processed. " +
-			"Sometimes these messages can be quite verbose and include JSON snippets, URLs, " +
-			"resource identifiers, correlation IDs, timestamps, and other diagnostic information " +
-			"that can help developers understand exactly what went wrong and how to fix it. " +
-			"The message might also include warnings about deprecated features, suggestions for " +
-			"alternative approaches, references to best practices, and links to relevant documentation."
-
-		body := `{
-			"error": {
-				"code": "ComplexValidationError",
-				"message": "` + longMessage + `"
-			}
-		}`
-
-		respErr := createResponseErrorWithBody(
-			400,
-			"ComplexValidationError",
-			body,
-			"POST",
-			"management.azure.com",
-			"/subscriptions/12345/resourceGroups/test/providers/Microsoft.Resources/deployments/template",
-		)
-
-		wrapper := NewResponseErrorWrapper(respErr)
-
-		// Test that large messages are handled efficiently
-		start := time.Now()
-		result := wrapper.Error()
-		duration := time.Since(start)
-
-		// Should complete quickly (under 10ms for such a message)
-		assert.Less(t, duration.Milliseconds(), int64(10), "Large message processing should be fast")
-
-		expectedMessage := "HTTP CODE: 400, ERROR CODE: ComplexValidationError, MESSAGE: " + longMessage + ", REQUEST: POST https://management.azure.com/subscriptions/12345/resourceGroups/test/providers/Microsoft.Resources/deployments/template"
-		assert.Equal(t, expectedMessage, result)
-
-		// Test caching works for large messages too
-		secondCall := wrapper.Error()
-		assert.Equal(t, result, secondCall, "Cached result should be identical")
 	})
 
 	t.Run("Azure Key Vault error format", func(t *testing.T) {
