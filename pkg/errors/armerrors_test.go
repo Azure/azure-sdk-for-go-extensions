@@ -11,14 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsNotFoundErr(t *testing.T) {
-	err1 := &azcore.ResponseError{ErrorCode: ResourceNotFound}
-	assert.Equal(t, IsNotFoundErr(err1), true)
-	err2 := &azcore.ResponseError{ErrorCode: "SomeOtherErrorCode"}
-	assert.Equal(t, IsNotFoundErr(err2), false)
-	assert.Equal(t, IsNotFoundErr(nil), false)
-}
-
 type testCase struct {
 	description   string
 	responseError error
@@ -38,7 +30,28 @@ func createResponseError(errorCode string, statusCode int, errorMessage string) 
 	}
 }
 
-func runErrorTests(t *testing.T, testName string, testCases []testCase, testFunc errorTestFunc) {
+// creates test cases for simple error code comparisons
+func createSimpleErrorCodeTests[T error](errorCode string, description string, createErr func(string, int, string) T) []testCase {
+	return createMessageContainsTests(errorCode, http.StatusBadRequest, "irrelevant message", description, createErr)
+}
+
+// creates test cases for errors that depend on both error code and message content
+func createMessageContainsTests[T error](errorCode string, statusCode int, message string, description string, createErr func(string, int, string) T) []testCase {
+	return []testCase{
+		{
+			description:   description,
+			responseError: createErr(errorCode, statusCode, message),
+			expected:      true,
+		},
+		{
+			description:   "Different Error Code",
+			responseError: createErr(ResourceNotFound, http.StatusNotFound, ""),
+			expected:      false,
+		},
+	}
+}
+
+func checkErrors(t *testing.T, testName string, testCases []testCase, testFunc errorTestFunc) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			got := testFunc(tc.responseError)
@@ -49,78 +62,62 @@ func runErrorTests(t *testing.T, testName string, testCases []testCase, testFunc
 	}
 }
 
-// creates test cases for simple error code comparisons
-func createSimpleErrorCodeTests(errorCode string, description string) []testCase {
-	return []testCase{
-		{
-			description:   description,
-			responseError: createResponseError(errorCode, http.StatusBadRequest, "Some error message"),
-			expected:      true,
-		},
-		{
-			description:   "Different Error Code",
-			responseError: createResponseError(ResourceNotFound, http.StatusNotFound, ""),
-			expected:      false,
-		},
-	}
+// Basic Response Error Tests
+func TestIsNotFoundErr(t *testing.T) {
+	err1 := &azcore.ResponseError{ErrorCode: ResourceNotFound}
+	assert.Equal(t, IsNotFoundErr(err1), true)
+	err2 := &azcore.ResponseError{ErrorCode: "SomeOtherErrorCode"}
+	assert.Equal(t, IsNotFoundErr(err2), false)
+	assert.Equal(t, IsNotFoundErr(nil), false)
 }
 
-// creates test cases for errors that depend on both error code and message content
-func createMessageContainsTests(errorCode string, statusCode int, message string, description string) []testCase {
-	return []testCase{
-		{
-			description:   description,
-			responseError: createResponseError(errorCode, statusCode, message),
-			expected:      true,
-		},
-		{
-			description:   "Different Error Code",
-			responseError: createResponseError(ResourceNotFound, http.StatusNotFound, ""),
-			expected:      false,
-		},
-	}
-}
-
-func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
-	testCases := createMessageContainsTests(
-		OperationNotAllowed,
-		http.StatusForbidden,
-		"Family Cores quota exceeded",
-		"Quota Exceeded",
-	)
-	runErrorTests(t, "SKUFamilyQuotaHasBeenReached", testCases, SKUFamilyQuotaHasBeenReached)
-}
-
+// Azure Allocation Error Tests
 func TestZonalAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(
 		ZoneAllocationFailed,
 		"Zonal Allocation Failed",
+		createResponseError,
 	)
-	runErrorTests(t, "ZonalAllocationFailureOccurred", testCases, ZonalAllocationFailureOccurred)
+	checkErrors(t, "ZonalAllocationFailureOccurred", testCases, ZonalAllocationFailureOccurred)
 }
 
-func TestAllocationFailureOccured(t *testing.T) {
+func TestAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(
 		AllocationFailed,
 		"Allocation Failed",
+		createResponseError,
 	)
-	runErrorTests(t, "AllocationFailureOccurred", testCases, AllocationFailureOccurred)
+	checkErrors(t, "AllocationFailureOccurred", testCases, AllocationFailureOccurred)
 }
 
 func TestOverConstrainedAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(
 		OverconstrainedAllocationRequest,
 		"Overconstrained Allocation Failed",
+		createResponseError,
 	)
-	runErrorTests(t, "OverconstrainedAllocationFailureOccurred", testCases, OverconstrainedAllocationFailureOccurred)
+	checkErrors(t, "OverconstrainedAllocationFailureOccurred", testCases, OverconstrainedAllocationFailureOccurred)
 }
 
 func TestOverConstrainedZonalAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(
 		OverconstrainedZonalAllocationRequest,
 		"Overconstrained Zonal Allocation Failed",
+		createResponseError,
 	)
-	runErrorTests(t, "OverconstrainedZonalAllocationFailureOccurred", testCases, OverconstrainedZonalAllocationFailureOccurred)
+	checkErrors(t, "OverconstrainedZonalAllocationFailureOccurred", testCases, OverconstrainedZonalAllocationFailureOccurred)
+}
+
+// Azure Quota Error Tests
+func TestSKUFamilyQuotaHasBeenReached(t *testing.T) {
+	testCases := createMessageContainsTests(
+		OperationNotAllowed,
+		http.StatusForbidden,
+		"Family Cores quota exceeded",
+		"Quota Exceeded",
+		createResponseError,
+	)
+	checkErrors(t, "SKUFamilyQuotaHasBeenReached", testCases, SKUFamilyQuotaHasBeenReached)
 }
 
 func TestRegionalQuotaHasBeenReached(t *testing.T) {
@@ -129,24 +126,9 @@ func TestRegionalQuotaHasBeenReached(t *testing.T) {
 		http.StatusForbidden,
 		"exceeding approved Total Regional Cores quota",
 		"Regional Quota Exceeded",
+		createResponseError,
 	)
-	runErrorTests(t, "RegionalQuotaHasBeenReached", testCases, RegionalQuotaHasBeenReached)
-}
-
-func TestIsNicReservedForAnotherVM(t *testing.T) {
-	testCases := createSimpleErrorCodeTests(
-		NicReservedForAnotherVM,
-		"NIC Reserved for Another VM",
-	)
-	runErrorTests(t, "IsNicReservedForAnotherVM", testCases, IsNicReservedForAnotherVM)
-}
-
-func TestIsSKUNotAvailable(t *testing.T) {
-	testCases := createSimpleErrorCodeTests(
-		SKUNotAvailableErrorCode,
-		"SKU Not Available",
-	)
-	runErrorTests(t, "IsSKUNotAvailable", testCases, IsSKUNotAvailable)
+	checkErrors(t, "RegionalQuotaHasBeenReached", testCases, RegionalQuotaHasBeenReached)
 }
 
 func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
@@ -155,6 +137,26 @@ func TestLowPriorityQuotaHasBeenReached(t *testing.T) {
 		http.StatusForbidden,
 		"Operation could not be completed as it results in exceeding approved LowPriorityCores quota",
 		"LowPriority Quota Exceeded",
+		createResponseError,
 	)
-	runErrorTests(t, "LowPriorityQuotaHasBeenReached", testCases, LowPriorityQuotaHasBeenReached)
+	checkErrors(t, "LowPriorityQuotaHasBeenReached", testCases, LowPriorityQuotaHasBeenReached)
+}
+
+// Azure Resource Error Tests
+func TestIsNicReservedForAnotherVM(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		NicReservedForAnotherVM,
+		"NIC Reserved for Another VM",
+		createResponseError,
+	)
+	checkErrors(t, "IsNicReservedForAnotherVM", testCases, IsNicReservedForAnotherVM)
+}
+
+func TestIsSKUNotAvailable(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		SKUNotAvailableErrorCode,
+		"SKU Not Available",
+		createResponseError,
+	)
+	checkErrors(t, "IsSKUNotAvailable", testCases, IsSKUNotAvailable)
 }
