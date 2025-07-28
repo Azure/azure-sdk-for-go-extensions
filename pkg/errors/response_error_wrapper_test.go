@@ -2,6 +2,7 @@ package errors
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCreationResponseError_Error(t *testing.T) {
+func TestResponseErrorWrapper_Error(t *testing.T) {
 	tests := []struct {
 		name           string
 		setupError     func() *azcore.ResponseError
@@ -93,6 +94,37 @@ func TestCreationResponseError_Error(t *testing.T) {
 			expectedOutput: "HTTP CODE: 403, ERROR CODE: TestError, MESSAGE: UNAVAILABLE, REQUEST: UNKNOWN UNAVAILABLE",
 		},
 		{
+			name: "format without error wrapper in json body",
+			setupError: func() *azcore.ResponseError {
+				body := `{
+                    "code": "InvalidConfiguration",
+                    "message": "The specified configuration is invalid and cannot be processed.",
+                    "details": []
+                }`
+
+				resp := &http.Response{
+					StatusCode: 400,
+					Status:     "400 Bad Request",
+					Body:       io.NopCloser(bytes.NewBufferString(body)),
+					Request: &http.Request{
+						Method: "PUT",
+						URL: &url.URL{
+							Scheme: "https",
+							Host:   "management.azure.com",
+							Path:   "/subscriptions/123/resourceGroups/test-rg/providers/Microsoft.ContainerService/managedClusters/test-cluster",
+						},
+					},
+				}
+
+				return &azcore.ResponseError{
+					ErrorCode:   "InvalidConfiguration",
+					StatusCode:  400,
+					RawResponse: resp,
+				}
+			},
+			expectedOutput: "HTTP CODE: 400, ERROR CODE: InvalidConfiguration, MESSAGE: The specified configuration is invalid and cannot be processed., REQUEST: PUT https://management.azure.com/subscriptions/123/resourceGroups/test-rg/providers/Microsoft.ContainerService/managedClusters/test-cluster",
+		},
+		{
 			name: "Nil ResponseError",
 			setupError: func() *azcore.ResponseError {
 				return nil
@@ -104,9 +136,9 @@ func TestCreationResponseError_Error(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			azErr := tt.setupError()
-			creationErr := NewResponseErrorWrapper(azErr)
+			responseErrWrapper := NewResponseErrorWrapper(azErr)
 
-			actual := creationErr.Error()
+			actual := responseErrWrapper.Error()
 			assert.Equal(t, tt.expectedOutput, actual)
 
 			anotherErr := NewResponseErrorWrapper(azErr)
@@ -453,5 +485,41 @@ func TestResponseErrorWrapper_IntegrationRealisticScenarios(t *testing.T) {
 
 		expectedMessage := "HTTP CODE: 403, ERROR CODE: Forbidden, MESSAGE: The user, group or application 'appid=12345678-1234-1234-1234-123456789abc;oid=87654321-4321-4321-4321-210987654321;iss=https://sts.windows.net/tenant-id/' does not have secrets get permission on key vault 'myvault;location=eastus'. For help resolving this issue, please see https://go.microsoft.com/fwlink/?linkid=2125287, REQUEST: GET https://myvault.vault.azure.net/secrets/mysecret"
 		assert.Equal(t, expectedMessage, result)
+	})
+}
+
+func TestAsWrappedResponseError(t *testing.T) {
+	t.Run("Returns nil interface for non-ResponseError", func(t *testing.T) {
+		err := errors.New("some other error")
+		result := AsWrappedResponseError(err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("Returns nil interface for nil error", func(t *testing.T) {
+		result := AsWrappedResponseError(nil)
+		assert.Nil(t, result)
+	})
+
+	t.Run("Returns wrapped error for valid ResponseError", func(t *testing.T) {
+		respErr := &azcore.ResponseError{ErrorCode: "Test", StatusCode: 400}
+		
+		result := AsWrappedResponseError(respErr)
+		assert.NotNil(t, result)
+		
+		// Should be able to type assert back to concrete type
+		wrapper, ok := result.(*ResponseErrorWrapper)
+		assert.True(t, ok)
+		assert.NotNil(t, wrapper)
+	})
+
+	t.Run("Implements error interface correctly", func(t *testing.T) {
+		respErr := &azcore.ResponseError{ErrorCode: "Test", StatusCode: 400}
+		
+		result := AsWrappedResponseError(respErr)
+		
+		// Should implement error interface
+		var err error = result
+		assert.NotNil(t, err)
+		assert.NotEmpty(t, err.Error())
 	})
 }

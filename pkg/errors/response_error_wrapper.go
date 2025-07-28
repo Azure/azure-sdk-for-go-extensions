@@ -28,7 +28,7 @@ func NewResponseErrorWrapper(respErr *azcore.ResponseError) *ResponseErrorWrappe
 	}
 }
 
-func AsWrappedResponseError(err error) *ResponseErrorWrapper {
+func AsWrappedResponseError(err error) error {
 	if azErr := IsResponseError(err); azErr != nil {
 		return NewResponseErrorWrapper(azErr)
 	}
