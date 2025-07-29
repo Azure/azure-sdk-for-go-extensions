@@ -30,7 +30,10 @@ func NewResponseErrorWrapper(respErr *azcore.ResponseError) *ResponseErrorWrappe
 	}
 }
 
-func AsWrappedResponseError(err error) error {
+// WrapResponseError wraps ResponseError instances in ResponseErrorWrapper for more concise formatting.
+// If the error is a ResponseError, it returns a wrapped version which has a more concise .Error() output.
+// If the error is not a ResponseError, it returns the original error unchanged.
+func WrapResponseError(err error) error {
 	if azErr := IsResponseError(err); azErr != nil {
 		return NewResponseErrorWrapper(azErr)
 	}

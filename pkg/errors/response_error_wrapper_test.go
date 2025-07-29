@@ -487,19 +487,19 @@ func TestResponseErrorWrapper_IntegrationRealisticScenarios(t *testing.T) {
 func TestAsWrappedResponseError(t *testing.T) {
 	t.Run("Returns original error for non-ResponseError", func(t *testing.T) {
 		err := errors.New("some other error")
-		result := AsWrappedResponseError(err)
+		result := WrapResponseError(err)
 		assert.Equal(t, err, result)
 	})
 
 	t.Run("Returns nil interface for nil error", func(t *testing.T) {
-		result := AsWrappedResponseError(nil)
+		result := WrapResponseError(nil)
 		assert.Nil(t, result)
 	})
 
 	t.Run("Returns wrapped error for valid ResponseError", func(t *testing.T) {
 		respErr := &azcore.ResponseError{ErrorCode: "Test", StatusCode: 400}
 
-		result := AsWrappedResponseError(respErr)
+		result := WrapResponseError(respErr)
 		assert.NotNil(t, result)
 
 		// Should be able to type assert back to concrete type
@@ -511,7 +511,7 @@ func TestAsWrappedResponseError(t *testing.T) {
 	t.Run("Implements error interface correctly", func(t *testing.T) {
 		respErr := &azcore.ResponseError{ErrorCode: "Test", StatusCode: 400}
 
-		result := AsWrappedResponseError(respErr)
+		result := WrapResponseError(respErr)
 
 		// Should implement error interface
 		var err error = result
