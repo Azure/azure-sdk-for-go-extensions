@@ -1,7 +1,9 @@
 package errors
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,7 +34,7 @@ func AsWrappedResponseError(err error) error {
 	if azErr := IsResponseError(err); azErr != nil {
 		return NewResponseErrorWrapper(azErr)
 	}
-	return nil
+	return err
 }
 
 func (c *ResponseErrorWrapper) Error() string {
@@ -63,7 +65,7 @@ func buildWrapperErrorMessage(respErr *azcore.ResponseError) string {
 	httpMethod, url := extractRequestInfo(respErr)
 
 	// Extract error message
-	errorMessage := extractErrorMessage(respErr)
+	errorMessage := extractErrorMessageFromBody(respErr)
 
 	wrapperMessage := fmt.Sprintf("HTTP CODE: %d, ERROR CODE: %s, MESSAGE: %s, REQUEST: %s %s",
 		httpCode, errorCode, errorMessage, httpMethod, url)
@@ -90,26 +92,61 @@ func extractRequestInfo(respErr *azcore.ResponseError) (string, string) {
 	return method, requestURL
 }
 
-// attempt to extract the error message from ResponseError using a regex.
-// This is best effort based on the formats we encountered - if we fail to find a match, we return "UNAVAILABLE"
-func extractErrorMessage(respErr *azcore.ResponseError) string {
-	// Get the full error string which contains the JSON body
-	fullError := respErr.Error()
+type AzureErrorResponse struct {
+	Error AzureError `json:"error"`
+}
 
-	// Use regex to extract the message from the JSON in the error string
-	// This pattern looks for "message": "..." in the JSON
-	// See responseErrorWrapper_test.go for an example of the expected format
-	matches := errorMessageRegex.FindStringSubmatch(fullError)
+type AzureError struct {
+	Code    string        `json:"code"`
+	Message string        `json:"message"`
+	Details []interface{} `json:"details"`
+}
 
-	if len(matches) < 2 {
+func extractErrorMessageFromBody(respErr *azcore.ResponseError) string {
+	// these 2 cases shouldn't happen in real-world scenarios as a
+	// response with no body should set it to http.NoBody
+	if respErr.RawResponse == nil {
 		return "UNAVAILABLE"
 	}
 
-	unquoted, err := strconv.Unquote(matches[1])
-	if err != nil {
-		// Fallback to raw message if unquoting fails
-		return matches[1]
+	if respErr.RawResponse.Body == nil {
+		return "UNAVAILABLE"
 	}
 
-	return jsonUnescaper.Replace(unquoted)
+	respBody := respErr.RawResponse.Body
+
+	// Read the body content once and save it in case we need to use one of the fallback approaches for message extraction
+	bodyBytes, err := io.ReadAll(respBody)
+	if err != nil {
+		return "UNAVAILABLE"
+	}
+	bodyString := string(bodyBytes)
+
+	// First try parsing as wrapped format (with "error" wrapper)
+	var wrappedResult AzureErrorResponse
+	err = json.Unmarshal(bodyBytes, &wrappedResult)
+	if err == nil && wrappedResult.Error.Code != "" {
+		return jsonUnescaper.Replace(wrappedResult.Error.Message)
+	}
+
+	// Try parsing as unwrapped format (without "error" wrapper)
+	var unwrappedResult AzureError
+	err = json.Unmarshal(bodyBytes, &unwrappedResult)
+	if err == nil && unwrappedResult.Code != "" {
+		return jsonUnescaper.Replace(unwrappedResult.Message)
+	}
+
+	// If both JSON parsing attempts failed, fallback to regex extraction on the body
+	matches := errorMessageRegex.FindStringSubmatch(bodyString)
+	if len(matches) >= 2 {
+		unquoted, err := strconv.Unquote(matches[1])
+		if err != nil {
+			// Fallback to raw message if unquoting fails
+			return matches[1]
+		}
+		return jsonUnescaper.Replace(unquoted)
+	}
+
+	// If all attempts fail, return a generic unavailable message
+	return "UNAVAILABLE"
 }
