@@ -118,7 +118,6 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 	if err != nil {
 		return "UNAVAILABLE"
 	}
-	bodyString := string(bodyBytes)
 
 	// First try parsing as wrapped format (with "error" wrapper)
 	var wrappedResult AzureErrorResponse
@@ -135,7 +134,7 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 	}
 
 	// If both JSON parsing attempts failed, fallback to regex extraction on the body
-	matches := errorMessageRegex.FindStringSubmatch(bodyString)
+	matches := errorMessageRegex.FindStringSubmatch(string(bodyBytes))
 	if len(matches) >= 2 {
 		unquoted, err := strconv.Unquote(matches[1])
 		if err != nil {
