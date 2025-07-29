@@ -47,8 +47,7 @@ func (c *ResponseErrorWrapper) Error() string {
 		return ""
 	}
 
-	// Attempt to build error message
-	// TODO - should we handle failures here in some special way? E.g. if we fail to extract with regex, do we just fallback to ResponseError.Error()?
+	// Attempt to build error message - this is best effort since format can vary depending on the Azure service
 	c.message = buildWrapperErrorMessage(c.respErr)
 
 	return c.message
@@ -65,7 +64,7 @@ func buildWrapperErrorMessage(respErr *azcore.ResponseError) string {
 	httpMethod, url := extractRequestInfo(respErr)
 
 	// Extract error message
-	errorMessage := extractErrorMessageFromBody(respErr)
+	errorMessage := extractErrorMessage(respErr)
 
 	wrapperMessage := fmt.Sprintf("HTTP CODE: %d, ERROR CODE: %s, MESSAGE: %s, REQUEST: %s %s",
 		httpCode, errorCode, errorMessage, httpMethod, url)
@@ -102,7 +101,7 @@ type AzureError struct {
 	Details []interface{} `json:"details"`
 }
 
-func extractErrorMessageFromBody(respErr *azcore.ResponseError) string {
+func extractErrorMessage(respErr *azcore.ResponseError) string {
 	// these 2 cases shouldn't happen in real-world scenarios as a
 	// response with no body should set it to http.NoBody
 	if respErr.RawResponse == nil {
