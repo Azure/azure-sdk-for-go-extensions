@@ -112,9 +112,8 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 		return "UNAVAILABLE"
 	}
 
-	respBody := respErr.RawResponse.Body
-
 	// Read the body content once and save it in case we need to use one of the fallback approaches for message extraction
+	respBody := respErr.RawResponse.Body
 	bodyBytes, err := io.ReadAll(respBody)
 	if err != nil {
 		return "UNAVAILABLE"
