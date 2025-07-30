@@ -4,14 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
-
-var errorMessageRegex = regexp.MustCompile(`"message"\s*:\s*("(?:[^"\\]|\\.)*")`)
 
 var jsonUnescaper = strings.NewReplacer(
 	"\n", " ",
@@ -28,6 +24,10 @@ func NewResponseErrorWrapper(respErr *azcore.ResponseError) *ResponseErrorWrappe
 	return &ResponseErrorWrapper{
 		respErr: respErr,
 	}
+}
+
+func (e *ResponseErrorWrapper) Unwrap() error {
+	return e.respErr
 }
 
 // WrapResponseError wraps ResponseError instances in ResponseErrorWrapper for more concise formatting.
@@ -95,13 +95,16 @@ func extractRequestInfo(respErr *azcore.ResponseError) (string, string) {
 }
 
 type AzureErrorResponse struct {
-	Error AzureError `json:"error"`
+	Error   AzureError `json:"error"`
+	Code    string     `json:"code"`
+	Message string     `json:"message"`
+	Details any        `json:"details"`
 }
 
 type AzureError struct {
-	Code    string        `json:"code"`
-	Message string        `json:"message"`
-	Details []interface{} `json:"details"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details any    `json:"details"`
 }
 
 func extractErrorMessage(respErr *azcore.ResponseError) string {
@@ -122,31 +125,22 @@ func extractErrorMessage(respErr *azcore.ResponseError) string {
 		return "UNAVAILABLE"
 	}
 
-	// First try parsing as wrapped format (with "error" wrapper)
-	var wrappedResult AzureErrorResponse
-	err = json.Unmarshal(bodyBytes, &wrappedResult)
-	if err == nil && wrappedResult.Error.Code != "" {
-		return jsonUnescaper.Replace(wrappedResult.Error.Message)
+	var result AzureErrorResponse
+	err = json.Unmarshal(bodyBytes, &result)
+	if err != nil {
+		return "UNAVAILABLE"
 	}
 
-	// Try parsing as unwrapped format (without "error" wrapper)
-	var unwrappedResult AzureError
-	err = json.Unmarshal(bodyBytes, &unwrappedResult)
-	if err == nil && unwrappedResult.Code != "" {
-		return jsonUnescaper.Replace(unwrappedResult.Message)
+	// Check wrapped format first (with "error" wrapper, seems to be more common)
+	if result.Error.Message != "" {
+		return jsonUnescaper.Replace(result.Error.Message)
 	}
 
-	// If both JSON parsing attempts failed, fallback to regex extraction on the body
-	matches := errorMessageRegex.FindStringSubmatch(string(bodyBytes))
-	if len(matches) >= 2 {
-		unquoted, err := strconv.Unquote(matches[1])
-		if err != nil {
-			// Fallback to raw message if unquoting fails
-			return matches[1]
-		}
-		return jsonUnescaper.Replace(unquoted)
+	// Check unwrapped format (without "error" wrapper)
+	if result.Message != "" {
+		return jsonUnescaper.Replace(result.Message)
 	}
 
-	// If all attempts fail, return a generic unavailable message
+	// If no message found, return unavailable
 	return "UNAVAILABLE"
 }

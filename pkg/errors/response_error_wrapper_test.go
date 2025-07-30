@@ -250,17 +250,6 @@ func TestResponseErrorWrapper_ErrorMessageExtractionEdgeCases(t *testing.T) {
 			expectedMessage: "Error with unicode: ñáéíóú and newlines and tabs ",
 		},
 		{
-			name: "Malformed JSON in error response",
-			jsonBody: `{
-				"error": {
-					"code": "TestCode",
-					"message": "Valid message"
-				}
-				"invalid": "json"
-			}`,
-			expectedMessage: "Valid message", // Should still extract the message despite malformed JSON
-		},
-		{
 			name: "Multiple message fields in JSON",
 			jsonBody: `{
 				"error": {
@@ -272,16 +261,6 @@ func TestResponseErrorWrapper_ErrorMessageExtractionEdgeCases(t *testing.T) {
 				}
 			}`,
 			expectedMessage: "First message", // Should pick the first one
-		},
-		{
-			name: "Empty message field",
-			jsonBody: `{
-				"error": {
-					"code": "TestCode",
-					"message": ""
-				}
-			}`,
-			expectedMessage: "", // Should return empty string, not "UNAVAILABLE"
 		},
 		{
 			name: "Message field with only whitespace",
