@@ -45,7 +45,7 @@ func createMessageContainsTests[T error](errorCode string, statusCode int, messa
 		},
 		{
 			description:   "Different Error Code",
-			responseError: createErr(ResourceNotFound, http.StatusNotFound, ""),
+			responseError: createErr("nooo im not found", http.StatusNotFound, ""),
 			expected:      false,
 		},
 	}
