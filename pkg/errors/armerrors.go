@@ -16,6 +16,7 @@ package errors
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -34,7 +35,7 @@ func IsResponseError(err error) *azcore.ResponseError {
 // IsNotFoundErr is used to determine if we are failing to find a resource within azure.
 func IsNotFoundErr(err error) bool {
 	azErr := IsResponseError(err)
-	return azErr != nil && azErr.ErrorCode == ResourceNotFound
+	return azErr != nil && azErr.StatusCode == http.StatusNotFound
 }
 
 // ZonalAllocationFailureOccurred communicates if we have failed to allocate a resource in a zone, and should try another zone.
