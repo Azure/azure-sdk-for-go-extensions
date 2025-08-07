@@ -45,7 +45,7 @@ func createMessageContainsTests[T error](errorCode string, statusCode int, messa
 		},
 		{
 			description:   "Different Error Code",
-			responseError: createErr(ResourceNotFound, http.StatusNotFound, ""),
+			responseError: createErr("nooo im not found", http.StatusNotFound, ""),
 			expected:      false,
 		},
 	}
@@ -64,10 +64,14 @@ func checkErrors(t *testing.T, testName string, testCases []testCase, testFunc e
 
 // Basic Response Error Tests
 func TestIsNotFoundErr(t *testing.T) {
-	err1 := &azcore.ResponseError{ErrorCode: ResourceNotFound}
+	err1 := &azcore.ResponseError{StatusCode: http.StatusNotFound}
 	assert.Equal(t, IsNotFoundErr(err1), true)
-	err2 := &azcore.ResponseError{ErrorCode: "SomeOtherErrorCode"}
+	err2 := &azcore.ResponseError{StatusCode: http.StatusOK}
 	assert.Equal(t, IsNotFoundErr(err2), false)
+	err3 := &azcore.ResponseError{StatusCode: http.StatusBadRequest}
+	assert.Equal(t, IsNotFoundErr(err3), false)
+	err4 := &azcore.ResponseError{StatusCode: http.StatusInternalServerError}
+	assert.Equal(t, IsNotFoundErr(err4), false)
 	assert.Equal(t, IsNotFoundErr(nil), false)
 }
 
