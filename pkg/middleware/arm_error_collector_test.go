@@ -315,3 +315,5 @@ func (m *mockTokenCredential) GetToken(ctx context.Context, opts policy.TokenReq
 		ExpiresOn: time.Now().Add(1 * time.Hour),
 	}, nil
 }
+
+

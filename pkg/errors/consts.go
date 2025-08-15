@@ -3,7 +3,6 @@ package errors
 const (
 
 	// Error codes
-	ResourceNotFound                      = "ResourceNotFound"
 	OperationNotAllowed                   = "OperationNotAllowed"
 	AllocationFailed                      = "AllocationFailed"
 	OverconstrainedAllocationRequest      = "OverconstrainedAllocationRequest"
