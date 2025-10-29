@@ -18,6 +18,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v7"
 )
 
+// Note: these functions should generally be kept in sync with armerrors.go counterparts
+// An alternative is to expose a generic interface that works for both.
+// Although, there seems to be no direct common interface, if not code/message extraction.
+
 // extractCloudErrorDetails extracts code and message from CloudErrorBody safely
 func extractCloudErrorDetails(cloudError armcontainerservice.CloudErrorBody) (code, message string) {
 	if cloudError.Code != nil {
