@@ -164,3 +164,12 @@ func TestIsSKUNotAvailable(t *testing.T) {
 	)
 	checkErrors(t, "IsSKUNotAvailable", testCases, IsSKUNotAvailable)
 }
+
+func TestIsInsufficientSubnetSizeError(t *testing.T) {
+	testCases := createSimpleErrorCodeTests(
+		InsufficientSubnetSizeErrorCode,
+		"Insufficient Subnet Size Error",
+		createResponseError,
+	)
+	checkErrors(t, "IsInsufficientSubnetSizeError", testCases, IsInsufficientSubnetSizeError)
+}

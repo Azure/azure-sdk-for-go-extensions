@@ -10,6 +10,7 @@ const (
 	OverconstrainedZonalAllocationRequest = "OverconstrainedZonalAllocationRequest"
 	NicReservedForAnotherVM               = "NicReservedForAnotherVm"
 	SKUNotAvailableErrorCode              = "SkuNotAvailable"
+	InsufficientSubnetSizeErrorCode       = "InsufficientSubnetSize"
 
 	// Error search terms
 	LowPriorityQuotaExceededTerm  = "LowPriorityCores"
