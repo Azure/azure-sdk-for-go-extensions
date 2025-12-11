@@ -105,5 +105,5 @@ func IsSKUNotAvailable(err error) bool {
 
 func IsInsufficientSubnetSizeError(err error) bool {
 	azErr := IsResponseError(err)
-	return azErr != nil && azErr.ErrorCode == InsufficientSubnetSizeErrorCode
+	return azErr != nil && isInsufficientSubnetSize(azErr.ErrorCode)
 }

@@ -94,3 +94,10 @@ func IsSKUNotAvailableInErrorDetail(errorDetail armcontainerservice.ErrorDetail)
 	code, _ := extractErrorDetailDetails(errorDetail)
 	return isSKUNotAvailable(code)
 }
+
+// IsInsufficientSubnetSizeErrorDetails occurs when a subnet that's in use for an AKS cluster no longer has available IP addresses
+// for successful resource assignment. See http://aka.ms/aks/insufficientsubnetsize
+func IsInsufficientSubnetSizeErrorDetails(errorDetail armcontainerservice.ErrorDetail) bool {
+	code, _ := extractErrorDetailDetails(errorDetail)
+	return isInsufficientSubnetSize(code)
+}
