@@ -53,6 +53,10 @@ func isSKUNotAvailable(code string) bool {
 	return code == SKUNotAvailableErrorCode
 }
 
+func isInsufficientSubnetSize(code string) bool {
+	return code == InsufficientSubnetSizeErrorCode
+}
+
 func isNicReservedForVM(code string) bool {
 	return code == NicReservedForAnotherVM
 }

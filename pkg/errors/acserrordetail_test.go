@@ -137,3 +137,11 @@ func TestIsSKUNotAvailableInErrorDetail(t *testing.T) {
 	)
 	checkErrorDetails(t, "IsSKUNotAvailableInErrorDetail", testCases, IsSKUNotAvailableInErrorDetail)
 }
+
+func TestIsInsufficientSubnetSizeDetails(t *testing.T) {
+	testCases := createSimpleErrorDetailCodeTests(
+		InsufficientSubnetSizeErrorCode,
+		"Insufficient Subnet Size",
+	)
+	checkErrorDetails(t, "IsInsufficientSubnetSizeErrorDetails", testCases, IsInsufficientSubnetSizeErrorDetails)
+}
