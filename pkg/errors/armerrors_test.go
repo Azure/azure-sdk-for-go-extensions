@@ -75,6 +75,20 @@ func TestIsNotFoundErr(t *testing.T) {
 	assert.Equal(t, IsNotFoundErr(nil), false)
 }
 
+func TestIsAuthorizationErr(t *testing.T) {
+	err1 := &azcore.ResponseError{StatusCode: http.StatusUnauthorized}
+	assert.Equal(t, IsAuthorizationErr(err1), true)
+	err2 := &azcore.ResponseError{StatusCode: http.StatusForbidden}
+	assert.Equal(t, IsAuthorizationErr(err2), true)
+	err3 := &azcore.ResponseError{StatusCode: http.StatusOK}
+	assert.Equal(t, IsAuthorizationErr(err3), false)
+	err4 := &azcore.ResponseError{StatusCode: http.StatusBadRequest}
+	assert.Equal(t, IsAuthorizationErr(err4), false)
+	err5 := &azcore.ResponseError{StatusCode: http.StatusNotFound}
+	assert.Equal(t, IsAuthorizationErr(err5), false)
+	assert.Equal(t, IsAuthorizationErr(nil), false)
+}
+
 // Azure Allocation Error Tests
 func TestZonalAllocationFailureOccurred(t *testing.T) {
 	testCases := createSimpleErrorCodeTests(

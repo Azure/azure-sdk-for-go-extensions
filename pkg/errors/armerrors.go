@@ -41,6 +41,13 @@ func IsNotFoundErr(err error) bool {
 	return azErr != nil && azErr.StatusCode == http.StatusNotFound
 }
 
+// IsAuthorizationErr is used to determine if we are failing to authenticate to azure, which may be due to expired credentials or missing permissions. 
+// In either case, retrying the same request will not succeed, and manual intervention is required to fix the underlying issue.
+func IsAuthorizationErr(err error) bool {
+	azErr := IsResponseError(err)
+	return azErr != nil && (azErr.StatusCode == http.StatusForbidden || azErr.StatusCode == http.StatusUnauthorized)
+}
+
 // ZonalAllocationFailureOccurred communicates if we have failed to allocate a resource in a zone, and should try another zone.
 // To learn more about zonal allocation failures, visit: http://aka.ms/allocation-guidance
 func ZonalAllocationFailureOccurred(err error) bool {
