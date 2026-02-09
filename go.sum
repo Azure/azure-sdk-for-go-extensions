@@ -97,5 +97,5 @@ gopkg.in/dnaeon/go-vcr.v3 v3.2.0 h1:Rltp0Vf+Aq0u4rQXgmXgtgoRDStTnFN83cWgSGSoRzM=
 gopkg.in/dnaeon/go-vcr.v3 v3.2.0/go.mod h1:2IMOnnlx9I6u9x+YBsM3tAMx6AlOxnJ0pWxQAzZ79Ag=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.3 h1:FZ8lmJycB7+hGSQo4Qn8DT5M6oRN1mP/bCwRWdBThuQ=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.3/go.mod h1:BgHrVkRmx7iWCumslrUpxE6BX474IrMXc+7R0RpV+E8=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.4 h1:N4HQs3aEtvcEVb/v695JGvrcJvqoIqz8urVEOSs6azo=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.4/go.mod h1:BgHrVkRmx7iWCumslrUpxE6BX474IrMXc+7R0RpV+E8=

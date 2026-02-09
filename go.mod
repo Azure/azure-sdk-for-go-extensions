@@ -12,7 +12,7 @@ require (
 	go.opentelemetry.io/otel v1.40.0
 	golang.org/x/net v0.49.0
 	gopkg.in/dnaeon/go-vcr.v3 v3.2.0
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.3
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.14.4
 )
 
 require (
