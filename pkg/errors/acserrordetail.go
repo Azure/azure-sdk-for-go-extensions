@@ -15,7 +15,7 @@ limitations under the License.
 package errors
 
 import (
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v8"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9"
 )
 
 // Note: these functions should generally be kept in sync with armerrors.go counterparts
