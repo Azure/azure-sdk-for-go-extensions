@@ -100,6 +100,18 @@ func Test_httpConnTrackingFirstResponseByte(t *testing.T) {
 	assert.GreaterOrEqual(t, connTracking.GetFirstByteTimeInMs(), int64(10))
 }
 
+func Test_httpConnTrackingFirstResponseByteRequiresConnection(t *testing.T) {
+	t.Parallel()
+
+	connTracking := new(HttpConnTracking)
+	ctx := addConnectionTracingToRequestContext(context.Background(), connTracking)
+	trace := httptrace.ContextClientTrace(ctx)
+
+	trace.GotFirstResponseByte()
+
+	assert.Zero(t, connTracking.GetFirstByteTimeInMs())
+}
+
 // BenchmarkHttpConnTracking benchmarks the performance of HttpConnTracking
 // with real HTTP requests to validate the performance impact of synchronization.
 //

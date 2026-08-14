@@ -179,12 +179,12 @@ func parseTransportError(err error) *ArmError {
 }
 
 func addConnectionTracingToRequestContext(ctx context.Context, connTracking *HttpConnTracking) context.Context {
-	requestStart := time.Now()
 	// traceVars holds timing variables that need to be protected from concurrent access
 	// since HTTP trace callbacks run in separate goroutines
 	traceVars := &struct {
 		mu        sync.RWMutex
 		getConn   *time.Time
+		gotConn   *time.Time
 		dnsStart  *time.Time
 		connStart *time.Time
 		tlsStart  *time.Time
@@ -192,7 +192,13 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 
 	trace := &httptrace.ClientTrace{
 		GotFirstResponseByte: func() {
-			connTracking.setFirstByteTimeInMs(time.Since(requestStart).Milliseconds())
+			traceVars.mu.RLock()
+			gotConn := traceVars.gotConn
+			traceVars.mu.RUnlock()
+
+			if gotConn != nil {
+				connTracking.setFirstByteTimeInMs(time.Since(*gotConn).Milliseconds())
+			}
 		},
 		GetConn: func(hostPort string) {
 			traceVars.mu.Lock()
@@ -200,12 +206,14 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 			traceVars.getConn = to.Ptr(time.Now())
 		},
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			traceVars.mu.RLock()
+			now := time.Now()
+			traceVars.mu.Lock()
 			getConn := traceVars.getConn
-			traceVars.mu.RUnlock()
+			traceVars.gotConn = &now
+			traceVars.mu.Unlock()
 
 			if getConn != nil {
-				connTracking.setTotalLatency(fmt.Sprintf("%dms", time.Now().Sub(*getConn).Milliseconds()))
+				connTracking.setTotalLatency(fmt.Sprintf("%dms", now.Sub(*getConn).Milliseconds()))
 			}
 
 			connTracking.setReqConnInfo(&connInfo)
