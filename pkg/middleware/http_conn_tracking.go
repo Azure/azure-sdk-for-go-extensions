@@ -8,8 +8,8 @@ import (
 type HttpConnTracking struct {
 	// mu protects the values below
 	mu sync.RWMutex
-	// firstByteTimeInMs is the time from starting the request until the first
-	// response byte is received.
+	// firstByteTimeInMs is the time from connection acquisition until the first
+	// response byte is received, in milliseconds.
 	firstByteTimeInMs int64
 	// Thread-safe access to these fields is provided via getter methods.
 	// Direct field access may not be thread-safe during concurrent HTTP operations.
@@ -27,7 +27,7 @@ type HttpConnTracking struct {
 	ReqConnInfo *httptrace.GotConnInfo
 }
 
-// GetFirstByteTimeInMs returns the time from starting the request until the
+// GetFirstByteTimeInMs returns the time from connection acquisition until the
 // first response byte is received, in milliseconds, in a thread-safe manner.
 func (h *HttpConnTracking) GetFirstByteTimeInMs() int64 {
 	h.mu.RLock()

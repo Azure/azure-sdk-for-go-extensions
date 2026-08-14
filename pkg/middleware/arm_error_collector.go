@@ -193,11 +193,15 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 	trace := &httptrace.ClientTrace{
 		GotFirstResponseByte: func() {
 			traceVars.mu.RLock()
-			gotConn := traceVars.gotConn
+			var firstByteTimeInMs int64
+			gotConnRecorded := traceVars.gotConn != nil
+			if gotConnRecorded {
+				firstByteTimeInMs = time.Since(*traceVars.gotConn).Milliseconds()
+			}
 			traceVars.mu.RUnlock()
 
-			if gotConn != nil {
-				connTracking.setFirstByteTimeInMs(time.Since(*gotConn).Milliseconds())
+			if gotConnRecorded {
+				connTracking.setFirstByteTimeInMs(firstByteTimeInMs)
 			}
 		},
 		GetConn: func(hostPort string) {
