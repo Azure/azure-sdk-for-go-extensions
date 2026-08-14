@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/http/httptrace"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -50,30 +51,53 @@ func Test_httpConnTracking(t *testing.T) {
 
 func Test_httpConnTrackingThreadSafety(t *testing.T) {
 	t.Parallel()
-	
+
 	// Test that getter methods provide thread-safe access
 	connTracking := new(HttpConnTracking)
-	
+
 	// Set some values using the internal setters to simulate HTTP trace callbacks
 	connTracking.setDnsLatency("10ms")
 	connTracking.setConnLatency("5ms")
 	connTracking.setTlsLatency("15ms")
 	connTracking.setTotalLatency("30ms")
 	connTracking.setProtocol("h2")
-	
+	connTracking.setFirstByteTimeInMs(42)
+
 	// Verify getter methods return the expected values
 	assert.Equal(t, "10ms", connTracking.GetDnsLatency())
 	assert.Equal(t, "5ms", connTracking.GetConnLatency())
 	assert.Equal(t, "15ms", connTracking.GetTlsLatency())
 	assert.Equal(t, "30ms", connTracking.GetTotalLatency())
 	assert.Equal(t, "h2", connTracking.GetProtocol())
-	
+	assert.Equal(t, int64(42), connTracking.GetFirstByteTimeInMs())
+
 	// Verify backward compatibility - direct field access still works
 	assert.Equal(t, "10ms", connTracking.DnsLatency)
 	assert.Equal(t, "5ms", connTracking.ConnLatency)
 	assert.Equal(t, "15ms", connTracking.TlsLatency)
 	assert.Equal(t, "30ms", connTracking.TotalLatency)
 	assert.Equal(t, "h2", connTracking.Protocol)
+}
+
+func Test_httpConnTrackingFirstResponseByte(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	connTracking := new(HttpConnTracking)
+	ctx := addConnectionTracingToRequestContext(context.Background(), connTracking)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	assert.NoError(t, err)
+
+	resp, err := server.Client().Do(req)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.GreaterOrEqual(t, connTracking.GetFirstByteTimeInMs(), int64(10))
 }
 
 // BenchmarkHttpConnTracking benchmarks the performance of HttpConnTracking
@@ -83,7 +107,7 @@ func Test_httpConnTrackingThreadSafety(t *testing.T) {
 // goos: linux
 // goarch: amd64
 // pkg: github.com/Azure/azure-sdk-for-go-extensions/pkg/middleware
-// cpu: AMD EPYC 7763 64-Core Processor                
+// cpu: AMD EPYC 7763 64-Core Processor
 // BenchmarkHttpConnTracking/WithGetterMethods-16         	     516	   2228617 ns/op	   92211 B/op	     984 allocs/op
 // BenchmarkHttpConnTracking/WithDirectFieldAccess-16     	     540	   2223993 ns/op	   92188 B/op	     984 allocs/op
 // BenchmarkHttpConnTracking/ConcurrentGetterAccess-16    	 5319430	       219.7 ns/op	       0 B/op	       0 allocs/op
@@ -103,19 +127,19 @@ func BenchmarkHttpConnTracking(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			connTracking := &HttpConnTracking{}
 			ctx := addConnectionTracingToRequestContext(context.Background(), connTracking)
-			
+
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 			if err != nil {
 				b.Fatalf("failed to create request: %v", err)
 			}
-			
+
 			// Use the test server's client to avoid certificate errors
 			resp, err := server.Client().Do(req)
 			if err != nil {
 				b.Fatalf("request failed: %v", err)
 			}
 			resp.Body.Close()
-			
+
 			// Access connection tracking data using thread-safe getter methods
 			_ = connTracking.GetTotalLatency()
 			_ = connTracking.GetDnsLatency()
@@ -131,19 +155,19 @@ func BenchmarkHttpConnTracking(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			connTracking := &HttpConnTracking{}
 			ctx := addConnectionTracingToRequestContext(context.Background(), connTracking)
-			
+
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 			if err != nil {
 				b.Fatalf("failed to create request: %v", err)
 			}
-			
+
 			// Use the test server's client to avoid certificate errors
 			resp, err := server.Client().Do(req)
 			if err != nil {
 				b.Fatalf("request failed: %v", err)
 			}
 			resp.Body.Close()
-			
+
 			// Access connection tracking data using direct field access (may not be thread-safe)
 			_ = connTracking.TotalLatency
 			_ = connTracking.DnsLatency
@@ -202,7 +226,7 @@ func BenchmarkHttpConnTracking(b *testing.B) {
 
 	b.Run("MutexOverhead", func(b *testing.B) {
 		connTracking := &HttpConnTracking{}
-		
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			// Measure just the mutex overhead by doing lock/unlock cycles

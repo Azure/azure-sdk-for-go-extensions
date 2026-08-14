@@ -53,8 +53,6 @@ type ResponseInfo struct {
 	ConnTracking  *HttpConnTracking
 }
 
-
-
 // ArmRequestMetricCollector is a interface that collectors need to implement.
 // TODO: use *policy.Request or *http.Request?
 type ArmRequestMetricCollector interface {
@@ -181,6 +179,7 @@ func parseTransportError(err error) *ArmError {
 }
 
 func addConnectionTracingToRequestContext(ctx context.Context, connTracking *HttpConnTracking) context.Context {
+	requestStart := time.Now()
 	// traceVars holds timing variables that need to be protected from concurrent access
 	// since HTTP trace callbacks run in separate goroutines
 	traceVars := &struct {
@@ -192,6 +191,9 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 	}{}
 
 	trace := &httptrace.ClientTrace{
+		GotFirstResponseByte: func() {
+			connTracking.setFirstByteTimeInMs(time.Since(requestStart).Milliseconds())
+		},
 		GetConn: func(hostPort string) {
 			traceVars.mu.Lock()
 			defer traceVars.mu.Unlock()
