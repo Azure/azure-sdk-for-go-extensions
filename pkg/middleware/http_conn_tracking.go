@@ -8,6 +8,9 @@ import (
 type HttpConnTracking struct {
 	// mu protects the values below
 	mu sync.RWMutex
+	// firstByteTimeInMs is the time from connection acquisition until the first
+	// response byte is received, in milliseconds.
+	firstByteTimeInMs int64
 	// Thread-safe access to these fields is provided via getter methods.
 	// Direct field access may not be thread-safe during concurrent HTTP operations.
 	// Deprecated: Use GetTotalLatency() for thread-safe access
@@ -22,6 +25,14 @@ type HttpConnTracking struct {
 	Protocol string
 	// Deprecated: Use GetReqConnInfo() for thread-safe access
 	ReqConnInfo *httptrace.GotConnInfo
+}
+
+// GetFirstByteTimeInMs returns the time from connection acquisition until the
+// first response byte is received, in milliseconds, in a thread-safe manner.
+func (h *HttpConnTracking) GetFirstByteTimeInMs() int64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.firstByteTimeInMs
 }
 
 // GetTotalLatency returns the total latency in a thread-safe manner
@@ -70,6 +81,12 @@ func (h *HttpConnTracking) setTotalLatency(latency string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.TotalLatency = latency
+}
+
+func (h *HttpConnTracking) setFirstByteTimeInMs(firstByteTimeInMs int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.firstByteTimeInMs = firstByteTimeInMs
 }
 
 func (h *HttpConnTracking) setDnsLatency(latency string) {

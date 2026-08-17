@@ -53,8 +53,6 @@ type ResponseInfo struct {
 	ConnTracking  *HttpConnTracking
 }
 
-
-
 // ArmRequestMetricCollector is a interface that collectors need to implement.
 // TODO: use *policy.Request or *http.Request?
 type ArmRequestMetricCollector interface {
@@ -186,24 +184,40 @@ func addConnectionTracingToRequestContext(ctx context.Context, connTracking *Htt
 	traceVars := &struct {
 		mu        sync.RWMutex
 		getConn   *time.Time
+		gotConn   *time.Time
 		dnsStart  *time.Time
 		connStart *time.Time
 		tlsStart  *time.Time
 	}{}
 
 	trace := &httptrace.ClientTrace{
+		GotFirstResponseByte: func() {
+			traceVars.mu.RLock()
+			var firstByteTimeInMs int64
+			gotConnRecorded := traceVars.gotConn != nil
+			if gotConnRecorded {
+				firstByteTimeInMs = time.Since(*traceVars.gotConn).Milliseconds()
+			}
+			traceVars.mu.RUnlock()
+
+			if gotConnRecorded {
+				connTracking.setFirstByteTimeInMs(firstByteTimeInMs)
+			}
+		},
 		GetConn: func(hostPort string) {
 			traceVars.mu.Lock()
 			defer traceVars.mu.Unlock()
 			traceVars.getConn = to.Ptr(time.Now())
 		},
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			traceVars.mu.RLock()
+			now := time.Now()
+			traceVars.mu.Lock()
 			getConn := traceVars.getConn
-			traceVars.mu.RUnlock()
+			traceVars.gotConn = &now
+			traceVars.mu.Unlock()
 
 			if getConn != nil {
-				connTracking.setTotalLatency(fmt.Sprintf("%dms", time.Now().Sub(*getConn).Milliseconds()))
+				connTracking.setTotalLatency(fmt.Sprintf("%dms", now.Sub(*getConn).Milliseconds()))
 			}
 
 			connTracking.setReqConnInfo(&connInfo)
